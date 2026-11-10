@@ -1,5 +1,4 @@
 import * as THREE from './three.js';
-import { makePlasterTexture } from './ShelfDressing.js';
 
 const BACKGROUND = 0x0c0b0a;
 export const FOV = 32;
@@ -29,7 +28,6 @@ export class SceneManager {
 
     this._buildEnvironment();
     this._buildLights();
-    this._buildRoom();
 
     this.onContextRestored = null;
     this._onLost = (e) => e.preventDefault(); // allow the browser to restore it
@@ -78,10 +76,10 @@ export class SceneManager {
    * just enough cool fill that the shadow sides of boxes keep their colour.
    */
   _buildLights() {
-    this.hemi = new THREE.HemisphereLight(0xe6ebff, 0x33271d, 0.55);
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0x3a3a40, 0.75);
     this.scene.add(this.hemi);
 
-    this.key = new THREE.DirectionalLight(0xffe7c8, 2.5);
+    this.key = new THREE.DirectionalLight(0xfff3e2, 2.4);
     this.key.castShadow = true;
     this.key.shadow.mapSize.set(2048, 2048);
     const sc = this.key.shadow.camera;
@@ -94,21 +92,9 @@ export class SceneManager {
     this.rim = new THREE.DirectionalLight(0xa9bcff, 0.4);
     this.scene.add(this.rim, this.rim.target);
 
-    // Wide and soft-edged: it reads as a wash of light on the wall, which
-    // frames the active shelf the way a vignette would, but in the room.
-    this.spot = new THREE.SpotLight(0xfff1de, 2.3, 0, 0.5, 1, 0);
+    // A soft showcase light on the centre of the shelf.
+    this.spot = new THREE.SpotLight(0xfff6ea, 1.6, 0, 0.42, 1, 0);
     this.scene.add(this.spot, this.spot.target);
-  }
-
-  _buildRoom() {
-    this.wallTexture = makePlasterTexture(this.renderer);
-    this.wall = new THREE.Mesh(
-      new THREE.PlaneGeometry(90, 44),
-      new THREE.MeshStandardMaterial({ map: this.wallTexture, roughness: 1, metalness: 0 }),
-    );
-    this.wall.position.z = -0.95;
-    this.wall.receiveShadow = false; // box shadows belong on the shelf; on the wall they read as noise
-    this.scene.add(this.wall);
   }
 
   /** Moves the whole lighting rig with the camera so one shadow map serves any shelf. */
@@ -122,9 +108,8 @@ export class SceneManager {
     this.key.target.position.set(0, y + 0.8, 0);
     this.rim.position.set(-9, y + 4, -3);
     this.rim.target.position.set(0, y + 1, 0);
-    this.spot.position.set(0, y + 4.5, 10);
-    this.spot.target.position.set(0, y + 1.1, -0.9);
-    this.wall.position.y = y;
+    this.spot.position.set(0, y + 6, 8);
+    this.spot.target.position.set(0, y + 1, 0.5);
   }
 
   /** Half-width of the view at the shelf plane (z = 0), in world units. */
@@ -151,9 +136,6 @@ export class SceneManager {
   dispose() {
     this.canvas.removeEventListener('webglcontextlost', this._onLost);
     this.canvas.removeEventListener('webglcontextrestored', this._onRestored);
-    this.wall.geometry.dispose();
-    this.wall.material.dispose();
-    this.wallTexture.dispose();
     this.environment.dispose();
     this.key.shadow.dispose();
     this.renderer.dispose();

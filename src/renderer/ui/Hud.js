@@ -6,9 +6,11 @@ const LAUNCHERS = {
 };
 
 // What each action does in each mode. Button names come from GLYPHS, per device.
+// Only what a first-time user needs is on screen. Everything else (search,
+// letter jump, zoom, favourites) is listed under Menu, Controls.
 const HINTS = {
-  browse: [['accept', 'Inspect'], ['flip', 'Game menu'], ['spine', 'Search'], ['zoom', 'Letter'], ['play', 'Play'], ['settings', 'Menu']],
-  inspect: [['accept', 'Play'], ['flip', 'Flip'], ['spine', 'Spine'], ['zoom', 'Zoom'], ['settings', 'Game menu'], ['back', 'Back']],
+  browse: [['accept', 'Open'], ['flip', 'Options'], ['settings', 'Menu']],
+  inspect: [['accept', 'Play'], ['flip', 'Flip'], ['settings', 'Options'], ['back', 'Back']],
   menu: [['accept', 'Select'], ['back', 'Back']],
   entry: [['accept', 'Type'], ['flip', 'Delete'], ['spine', 'Space'], ['page', 'Result'], ['play', 'Done'], ['back', 'Cancel']],
   settings: [['back', 'Close']],
@@ -16,8 +18,8 @@ const HINTS = {
 };
 // The mouse has gestures rather than buttons, so it gets its own wording.
 const MOUSE_HINTS = {
-  browse: [['Click', 'Select, then inspect'], ['Right-click', 'Game menu'], ['Wheel', 'Scroll'], ['F1', 'Menu']],
-  inspect: [['Drag', 'Rotate'], ['Wheel', 'Zoom'], ['Right-click', 'Game menu'], ['Click away', 'Back']],
+  browse: [['Click', 'Open'], ['Right-click', 'Options'], ['F1', 'Menu']],
+  inspect: [['Drag', 'Rotate'], ['Right-click', 'Options'], ['Click away', 'Back']],
   menu: [['Click', 'Select'], ['Esc', 'Back']],
   entry: [['Click', 'Pick a result'], ['Esc', 'Cancel']],
   settings: [['Esc', 'Close']],
@@ -78,6 +80,22 @@ export class Hud {
     this.padType = 'xbox';
     this.lastKey = '';
     this.detailsKey = '';
+  }
+
+  /** Sets the colour of text drawn over the scene, so it reads on light and dark backdrops. */
+  setTheme(theme) {
+    const style = document.documentElement.style;
+    style.setProperty('--hud-ink', theme.hud.ink);
+    style.setProperty('--hud-ink-2', theme.hud.ink2);
+    style.setProperty('--hud-ink-3', theme.hud.ink3);
+    style.setProperty('--hud-scrim', theme.hud.scrim);
+  }
+
+  /** Shows the shelf index for a moment; it appears only while you change shelves. */
+  pulseRail() {
+    document.body.classList.add('rail-live');
+    clearTimeout(this._railTimer);
+    this._railTimer = setTimeout(() => document.body.classList.remove('rail-live'), 1500);
   }
 
   /** Re-labels the hints for the device in use and hides the cursor off-mouse. */

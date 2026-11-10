@@ -41,8 +41,8 @@ const MIME = {
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
   '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
 };
-const SOUND_EVENTS = ['ambient', 'move', 'shelf', 'select', 'back', 'launch'];
-const SOUND_FILE = /^(ambient|move|shelf|select|back|launch)\.(ogg|mp3|wav)$/;
+const SOUND_EVENTS = ['move', 'shelf', 'select', 'back', 'launch'];
+const SOUND_FILE = /^(move|shelf|select|back|launch)\.(ogg|mp3|wav)$/;
 
 // A real origin (instead of file://) gives the page ES modules, module
 // workers, fetch() and untainted WebGL textures under a strict CSP.
@@ -368,7 +368,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
       backgroundThrottling: !CAPTURE,
-      autoplayPolicy: 'no-user-gesture-required', // shelf ambience may start before the first key press
+      autoplayPolicy: 'no-user-gesture-required', // a controller press is not a "user gesture", but must still make sound
     },
   });
 
@@ -436,6 +436,10 @@ function runCapture() {
       await wait(1800);
       const stats = await win.webContents.executeJavaScript('window.__megashelfStats ? Promise.resolve(window.__megashelfStats()).then(JSON.stringify) : ""');
       if (stats) console.log('[stats]', stats);
+      if (flag('audio-check')) {
+        const audio = await win.webContents.executeJavaScript('window.__megashelfAudioCheck().then(JSON.stringify)');
+        console.log('[audio]', audio);
+      }
       const image = await win.webContents.capturePage();
       await fsp.writeFile(CAPTURE, image.toPNG());
       console.log('[capture] wrote', CAPTURE);

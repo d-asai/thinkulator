@@ -18,7 +18,13 @@
   --surface-2: #201d1a;
   --danger: #e2674f;
   --warn: #d9a441;
-  --accent: #f3efe6; /* set per shelf from script; used only for the small shelf tab */
+
+  /* Text drawn straight over the scene. Set per console theme from script,
+     because some backdrops are light (Wii, Game Boy) and some are dark. */
+  --hud-ink: #f4f2ec;
+  --hud-ink-2: #b4b1a9;
+  --hud-ink-3: #7d7a73;
+  --hud-scrim: 8, 8, 9;
 
   --display: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", sans-serif;
   --text: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -52,24 +58,32 @@ h1, h2, h3 { font-family: var(--display); font-stretch: 82%; font-weight: 600; m
   outline: none;
 }
 
-/* Scrims: only where text sits over the scene, never a blanket vignette. */
+/* Scrims: only where text sits over the scene, and in the backdrop's own tone. */
 #vignette {
   position: fixed;
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(to top, rgba(12, 11, 10, 0.94) 0%, rgba(12, 11, 10, 0.6) 14%, transparent 32%),
-    linear-gradient(to right, rgba(12, 11, 10, 0.96) 0%, rgba(12, 11, 10, 0.88) 12%, transparent 28%);
+    linear-gradient(to top, rgba(var(--hud-scrim), 0.78) 0%, rgba(var(--hud-scrim), 0.4) 12%, transparent 26%),
+    linear-gradient(to right, rgba(var(--hud-scrim), 0) 0%, transparent 26%);
   transition: background 0.3s ease;
+}
+
+body.rail-live #vignette {
+  background:
+    linear-gradient(to top, rgba(var(--hud-scrim), 0.78) 0%, rgba(var(--hud-scrim), 0.4) 12%, transparent 26%),
+    linear-gradient(to right, rgba(var(--hud-scrim), 0.9) 0%, rgba(var(--hud-scrim), 0.72) 11%, transparent 26%);
 }
 
 body.inspecting #vignette {
   background:
-    linear-gradient(to top, rgba(12, 11, 10, 0.94) 0%, rgba(12, 11, 10, 0.6) 14%, transparent 32%),
-    linear-gradient(to left, rgba(12, 11, 10, 0.96) 0%, rgba(12, 11, 10, 0.9) 27%, transparent 46%);
+    linear-gradient(to top, rgba(var(--hud-scrim), 0.78) 0%, rgba(var(--hud-scrim), 0.4) 12%, transparent 26%),
+    linear-gradient(to left, rgba(var(--hud-scrim), 0.92) 0%, rgba(var(--hud-scrim), 0.8) 26%, transparent 44%);
 }
 
-/* ---- shelf index ------------------------------------------------------ */
+/* ---- shelf index ------------------------------------------------------
+   Hidden at rest. It appears while you move between shelves and fades
+   again, so the shelf itself stays uncluttered. */
 
 #rail {
   --row: 30px;
@@ -80,10 +94,13 @@ body.inspecting #vignette {
   transform: translateY(-50%);
   overflow: hidden;
   pointer-events: none;
+  opacity: 0;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
-  transition: opacity 0.25s ease;
+  transition: opacity 0.35s ease;
 }
+
+body.rail-live #rail { opacity: 1; transition-duration: 0.12s; }
 
 .rail-track { transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1); }
 
@@ -98,19 +115,19 @@ body.inspecting #vignette {
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ink-3);
-  transition: color 0.2s ease, transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+  color: var(--hud-ink-3);
+  transition: color 0.2s ease;
 }
 
 .rail-item::before {
   content: "";
   width: 0;
   height: 2px;
-  background: var(--ink);
+  background: var(--hud-ink);
   transition: width 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.rail-item.active { color: var(--ink); font-weight: 600; }
+.rail-item.active { color: var(--hud-ink); font-weight: 600; }
 .rail-item.active::before { width: 18px; }
 
 .rail-count {
@@ -119,7 +136,7 @@ body.inspecting #vignette {
   font-weight: 400;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
+  color: var(--hud-ink-3);
 }
 
 /* ---- selected game ---------------------------------------------------- */
@@ -128,27 +145,28 @@ body.inspecting #vignette {
   position: fixed;
   left: var(--edge);
   bottom: 44px;
-  max-width: min(62vw, 980px);
+  max-width: min(58vw, 900px);
   pointer-events: none;
+  color: var(--hud-ink);
 }
 
 /* The printed card on the shelf already names the system. */
 #info-system { display: none; }
 
 #info-title {
-  font-size: clamp(34px, 4.4vw, 68px);
-  font-weight: 700;
-  line-height: 0.95;
-  letter-spacing: 0.005em;
+  font-size: clamp(26px, 2.9vw, 44px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   text-wrap: balance;
 }
 
 #info-meta {
-  margin-top: 12px;
+  margin-top: 9px;
   min-height: 18px;
-  font-size: 13.5px;
-  color: var(--ink-2);
+  font-size: 13px;
+  color: var(--hud-ink-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -157,11 +175,11 @@ body.inspecting #vignette {
 #hints {
   position: fixed;
   right: var(--edge);
-  bottom: 48px;
+  bottom: 46px;
   display: flex;
   gap: 22px;
   font-size: 13px;
-  color: var(--ink-2);
+  color: var(--hud-ink-2);
   pointer-events: none;
 }
 
@@ -169,26 +187,26 @@ body.inspecting #vignette {
 
 /* Key caps are outlines, not coloured pills: the shape says "button". */
 .glyph {
-  min-width: 24px;
-  height: 24px;
+  min-width: 22px;
+  height: 22px;
   padding: 0 6px;
   display: inline-grid;
   place-items: center;
-  border: 1px solid var(--ink-3);
+  border: 1px solid var(--hud-ink-3);
   border-radius: 4px;
   font-family: var(--display);
   font-stretch: 86%;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   line-height: 1;
-  color: var(--ink);
+  color: var(--hud-ink);
 }
 
 /* Face buttons are round on the pad, so they are round here. */
 .glyph.a, .glyph.b, .glyph.x, .glyph.y,
 .glyph.ps-cross, .glyph.ps-circle, .glyph.ps-square, .glyph.ps-triangle {
   padding: 0;
-  width: 24px;
+  width: 22px;
   border-radius: 50%;
 }
 
@@ -204,7 +222,7 @@ body[data-input="keyboard"] #stage { cursor: none; }
   right: var(--edge);
   max-width: 46vw;
   font-size: 13px;
-  color: var(--ink-2);
+  color: var(--hud-ink-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -380,6 +398,7 @@ button.quiet:hover { color: var(--ink); border-color: var(--ink-3); }
   flex-direction: column;
   gap: 12px;
   pointer-events: none;
+  color: var(--hud-ink);
   animation: slide-in 0.3s ease;
 }
 
@@ -387,7 +406,7 @@ button.quiet:hover { color: var(--ink); border-color: var(--ink-3); }
 
 .details-facts {
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--ink-3);
+  border-bottom: 1px solid var(--hud-ink-3);
   font-family: var(--display);
   font-stretch: 86%;
   font-size: 16px;
@@ -409,18 +428,18 @@ button.quiet:hover { color: var(--ink); border-color: var(--ink-3); }
   margin: 0;
   font-size: 14px;
   line-height: 1.6;
-  color: var(--ink);
+  color: var(--hud-ink);
   display: -webkit-box;
   -webkit-line-clamp: 9;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.details-makers, .details-stats, .details-none { font-size: 12.5px; color: var(--ink-2); }
-.details-stats { padding-top: 12px; border-top: 1px solid var(--rule); }
+.details-makers, .details-stats, .details-none { font-size: 12.5px; color: var(--hud-ink-2); }
+.details-stats { padding-top: 12px; border-top: 1px solid var(--hud-ink-3); }
 .details-stats:first-child { padding-top: 0; border-top: 0; }
 
-body.inspecting #rail { opacity: 0; }
+body.inspecting #rail { opacity: 0 !important; }
 
 /* ---- letter jump ------------------------------------------------------ */
 
@@ -434,7 +453,7 @@ body.inspecting #rail { opacity: 0; }
   font-size: 150px;
   font-weight: 700;
   line-height: 1;
-  text-shadow: 0 4px 40px rgba(0, 0, 0, 0.8);
+  color: var(--hud-ink);
   pointer-events: none;
   opacity: 0;
 }
@@ -609,6 +628,6 @@ body[data-input="keyboard"] .osk { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rail-track, .rail-item, .rail-item::before, #fade, #rail, #vignette { transition: none; }
+  .rail-track, .rail-item, .rail-item::before, #fade, #vignette { transition: none; }
   .toast, .menu-panel, .entry-panel, #details { animation: none; }
 }

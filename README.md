@@ -39,8 +39,8 @@ npm run dist
 - **Per-game settings**: a different emulator, core or arguments for the
   games that need them.
 - **Hide and rename** games, and **choose your own box art**.
-- **Console-styled sound**: interface sounds and ambience voiced in the style
-  of each console's era.
+- **A theme per console**: its own backdrop, shelf colours and sounds, in the
+  style of that console's era.
 - **Updates itself** from GitHub releases.
 
 ## Set up your library
@@ -82,6 +82,8 @@ keyboard keys, or mouse gestures. On Nintendo pads A confirms and B goes back.
 | View | F1 | Main menu | Game menu |
 | | F | Toggle favourite | Toggle favourite |
 
+Only the essentials are shown on screen; the full list is under Menu, Controls.
+
 Mouse: click a box to select it, click again to inspect, right-click for the
 game menu, drag to rotate, wheel to scroll or zoom. **F11** toggles full
 screen. **Ctrl+Alt+Backspace** force-closes a running emulator.
@@ -113,14 +115,17 @@ sorting and filters, sound, settings and quit.
 To add a system, add an entry to `src/main/systems.js` and, if it needs a new
 box shape, a profile in `src/renderer/engine/BoxFactory.js`.
 
-## Sound
+## Look and sound
 
-The sounds are synthesised in the style of each console's era; they are not
-the consoles' real boot or menu sounds. To use your own recordings, create a
-folder named after the system id (`nes`, `snes`, `ps2`, `pc`, ...) in
-`%APPDATA%\megashelf\sounds` and add any of `ambient`, `move`, `shelf`,
-`select`, `back` or `launch` as `.ogg`, `.mp3` or `.wav`. Sound and volume are
-in the main menu.
+Each console's shelf has its own backdrop, colours and sounds, designed from
+that console's hardware colours and the style of its era. They are original
+designs, not copies of the consoles' own menus or audio. Sounds play only
+when you do something (move, select, launch); there is no background sound.
+
+To use your own recordings, create a folder named after the system id (`nes`,
+`snes`, `ps2`, `pc`, ...) in `%APPDATA%\megashelf\sounds` and add any of
+`move`, `shelf`, `select`, `back` or `launch` as `.ogg`, `.mp3` or
+`.wav`. Sound and volume are in the main menu.
 
 ## Releasing
 

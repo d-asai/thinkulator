@@ -7,6 +7,10 @@ import { Inspector } from './engine/Inspector.js';
 import { InputManager } from './input/InputManager.js';
 import { PAD_NAMES } from './input/devices.js';
 import { SoundEngine } from './audio/SoundEngine.js';
+import { Synth, VOICES } from './audio/voices.js';
+import { Backdrop } from './engine/Backdrop.js';
+import { themeFor } from './themes.js';
+import { GLYPHS } from './input/devices.js';
 import { buildShelves, searchGames, DEFAULT_VIEW, SORTS, SORT_LABELS, REGIONS } from './library/shelves.js';
 import { Hud } from './ui/Hud.js';
 import { Menu } from './ui/Menu.js';
@@ -62,6 +66,7 @@ class App {
       saveAtlas: (id, key, version, bytes) => api.saveAtlas(id, key, version, bytes),
       onLoaded: () => this.invalidate(),
     });
+    this.backdrop = new Backdrop(this.stage);
     this.shelf = new ShelfView({ stage: this.stage, factory: this.factory, textures: this.textures });
     this.inspector = new Inspector(this.stage);
     this.input = new InputManager();
@@ -79,7 +84,7 @@ class App {
     this.emulators = [];
     this.view = { ...DEFAULT_VIEW, sound: true, volume: 0.6, ...readStorage(VIEW_KEY, {}) };
     this.needsRebuild = false;
-    this.ambienceFor = '';
+    this.themeFor = null; //  id of the shelf whose theme is showing
     this.dirty = true; //   a frame must be drawn even if nothing is animating
     this.rafId = 0;
     this.lastTime = 0;
@@ -160,7 +165,8 @@ class App {
     this.hud.setShelves(this.shelf.shelves);
     this.hud.setEmpty(this.shelf.isEmpty, this.games.length > 0);
     this.hud.invalidate();
-    this.ambienceFor = '';
+    this.themeFor = null;
+    this.updateTheme(true);
     this.syncMode();
     this.invalidate();
   }
@@ -188,7 +194,6 @@ class App {
   saveView() {
     writeStorage(VIEW_KEY, this.view);
     this.sound.configure({ enabled: this.view.sound, volume: this.view.volume });
-    this.ambienceFor = '';
   }
 
   // ---- loop ----------------------------------------------------------------
@@ -230,15 +235,31 @@ class App {
     const rotating = this.mode === 'inspect' && !this.overlay;
     let animating = this.inspector.update(dt, rotating ? input.look : { x: 0, y: 0 }, rotating ? input.zoom : 0);
     animating = this.shelf.update(dt) || animating;
+    this.updateTheme(false);
+    animating = this.backdrop.update(dt, this.shelf.camY.value) || animating;
 
     this.hud.setSelection(this.shelf.active, this.shelf.activeShelf);
     this.hud.setDetails(this.mode === 'inspect' ? this.shelf.activeGame : null);
-    this.updateAmbience();
 
     if (animating || this.dirty || input.held) {
       this.dirty = false;
       this.stage.render();
     }
+  }
+
+  // ---- theme ---------------------------------------------------------------
+
+  /** Backdrop and text colour follow the active shelf's console. */
+  updateTheme(instant) {
+    const shelf = this.shelf.activeShelf;
+    const id = shelf ? shelf.system.id : '';
+    if (id === this.themeFor) return;
+    const first = this.themeFor === null;
+    this.themeFor = id;
+    const theme = themeFor(shelf ? shelf.system : null);
+    this.backdrop.set(theme, instant);
+    this.hud.setTheme(theme);
+    if (!first && !instant) this.hud.pulseRail();
   }
 
   // ---- sound ---------------------------------------------------------------
@@ -251,16 +272,6 @@ class App {
 
   sfx(event) {
     this.sound.play(event, this.soundSystem);
-  }
-
-  updateAmbience() {
-    const shelf = this.shelf.activeShelf;
-    if (!shelf) return;
-    // A console's shelf has one bed; mixed shelves follow the selected game.
-    const systemId = shelf.system.kind === 'system' ? shelf.system.id : this.soundSystem;
-    if (systemId === this.ambienceFor) return;
-    this.ambienceFor = systemId;
-    this.sound.setAmbience(systemId);
   }
 
   // ---- modes ---------------------------------------------------------------
@@ -424,11 +435,37 @@ class App {
           label: 'Volume', value: `${Math.round(v.volume * 100)}%`,
           run: () => { v.volume = v.volume >= 0.99 ? 0.2 : Math.round((v.volume + 0.2) * 10) / 10; this.saveView(); this.sfx('select'); },
         },
+        { label: 'Controls', run: () => this.menu.push(this.controlsLevel()) },
         { label: 'Settings', hint: 'Emulators, ROM folders, launchers and updates', run: () => { this.openSettings(); return 'close'; } },
         { label: 'Rescan library', run: () => { api.rescan(); return 'close'; } },
         { label: 'Quit MegaShelf', danger: true, run: () => api.quit() },
       ],
     });
+  }
+
+  /** Every binding, named for the device in hand. The on-screen hints only show the essentials. */
+  controlsLevel() {
+    const pad = this.input.device === 'gamepad';
+    const g = GLYPHS[pad ? this.input.padType : 'keyboard'];
+    const key = (action, keyboard) => (pad ? g[action][0] : keyboard || g[action][0]);
+    const row = (label, value) => ({ label, value, disabled: true, run: () => {} });
+    return {
+      title: 'Controls',
+      items: () => [
+        row('Move, change shelf', pad ? 'D-pad / stick' : 'Arrow keys'),
+        row('Open a box, then play', key('accept')),
+        row('Play straight away', key('play')),
+        row('Options for a game', key('flip', 'X or M')),
+        row('Search', key('spine', 'Y or /')),
+        row('Jump by letter', pad ? g.zoom[0] : '[ and ]'),
+        row('Jump ten games', key('page')),
+        row('Toggle favourite', pad ? 'In Options' : 'F'),
+        row('Flip / spine (open box)', `${key('flip')} / ${key('spine')}`),
+        row('Zoom (open box)', pad ? g.zoom[0] : '- and ='),
+        row('This menu', key('settings')),
+        { label: 'Back', run: () => 'back' },
+      ],
+    };
   }
 
   openGameMenu() {
@@ -580,7 +617,6 @@ class App {
     this.inspector.launch.target = 1;
     this.hud.fade(true, `Starting ${game.title}`);
     this.sfx('launch');
-    this.sound.stopAmbience();
     this.persist();
     await wait(480); // let the dive-in finish before the emulator takes the screen
 
@@ -604,7 +640,6 @@ class App {
   finishLaunch(returnTo) {
     this.inspector.launch.target = 0;
     this.hud.fade(false);
-    this.ambienceFor = '';
     this.setMode(returnTo === 'inspect' && this.inspector.active ? 'inspect' : 'browse');
   }
 
@@ -744,6 +779,7 @@ class App {
     this.input.dispose();
     this.sound.dispose();
     this.shelf.dispose();
+    this.backdrop.dispose();
     this.textures.dispose();
     this.factory.dispose();
     this.stage.dispose();
@@ -762,6 +798,36 @@ if (NO_PAUSE) {
     customSounds: await Promise.all(Object.entries(app.sound.custom).flatMap(([system, events]) => Object.entries(events)
       .map(([event, file]) => fetch(`/sounds/${system}/${file}`).then((r) => `${system}/${event}: HTTP ${r.status} ${r.headers.get('content-type')}`)))),
   });
+}
+if (NO_PAUSE) {
+  /**
+   * Dev capture mode only: renders every console's voice offline and measures
+   * it, so the synth can be checked without anyone listening. Reports peak
+   * level per event (silence, clipping and NaN all show up here).
+   */
+  window.__megashelfAudioCheck = async () => {
+    const events = ['move', 'shelf', 'select', 'back', 'favorite', 'launch', 'bump'];
+    const measure = async (seconds, build) => {
+      const ctx = new OfflineAudioContext(2, Math.floor(44100 * seconds), 44100);
+      build(new Synth(ctx, ctx.destination), ctx);
+      const data = (await ctx.startRendering()).getChannelData(0);
+      let peak = 0;
+      let bad = false;
+      for (let i = 0; i < data.length; i++) {
+        const v = Math.abs(data[i]);
+        if (!(v >= 0)) bad = true;
+        if (v > peak) peak = v;
+      }
+      return bad ? 'NaN' : peak.toFixed(3);
+    };
+    const out = {};
+    for (const id of Object.keys(VOICES)) {
+      const row = {};
+      for (const event of events) row[event] = await measure(3.2, (synth) => synth.play(id, event));
+      out[id] = row;
+    }
+    return out;
+  };
 }
 app.start().catch((err) => {
   console.error(err);

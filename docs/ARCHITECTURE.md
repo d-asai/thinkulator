@@ -207,13 +207,26 @@ makes clear cases and steelbooks actually reflect. The whole rig follows the
 camera vertically, so a single 2048² shadow map serves any shelf. Tone mapping
 is Khronos PBR Neutral, which keeps cover-art colours true.
 
-The room is dressed by `ShelfDressing.js`: a walnut grain for the shelves, a
-matte plaster for the wall, and a printed card in each shelf's edge rail that
-names the system and counts its games. All three are drawn to small canvases
-at start-up, so no image files are shipped. The card is the only place a
-system's colour appears; the interface itself uses one warm off-white ink, a
-condensed signage typeface (Bahnschrift, with DIN-style fallbacks), hairline
-rules and solid surfaces.
+**Console themes (`themes.js`, `Backdrop.js`).** Every console has a theme:
+the backdrop behind the shelf, the colour of the shelf board and its edge
+rail, the printed label card, and whether interface text over it is light or
+dark. Each is an original design built from that console's hardware colours
+and the look of its era (CRT scanlines for NES, an LCD dot matrix in the four
+greens for Game Boy, a blue grid for Genesis, a cool white studio for Wii).
+They are not copies of any console's own menu screens. Mixed shelves
+(favourites, collections) use a neutral theme.
+
+The backdrop is two unlit planes and two canvases in total. Changing shelf
+redraws one canvas and cross-fades, so memory does not grow with the number
+of consoles, and the scene's fog colour follows so distant boxes fade into
+the backdrop. Text over the scene takes its colour from the theme through CSS
+variables; a unit test checks its contrast against every backdrop.
+
+The interface is deliberately sparse: the game's title, three button hints,
+and the shelf's printed label. The shelf index appears only while you move
+between shelves. Everything else is in the menus, including a Controls list.
+It uses one condensed signage typeface (Bahnschrift, with DIN-style
+fallbacks), hairline rules and solid surfaces.
 
 ### 5.2 The matrix layout (`ShelfView.js`)
 
@@ -387,15 +400,21 @@ source, so their games show play statistics only.
 spine, look the art up again, or keep the generated cover. Dropping an image
 on an inspected box sets whichever face is turned towards you.
 
-**Sound (`audio/SoundEngine.js`).** Interface sounds and a quiet ambient bed,
-all synthesised with Web Audio. Each system belongs to a family that imitates
-its era's sound hardware (pulse waves for NES and Game Boy, two-operator FM
-for Genesis, sine pads for the disc consoles) and has its own key. These are
-original sounds, not the consoles' real boot or menu audio, which is
-copyrighted. To use your own recordings, put `ambient`, `move`, `shelf`,
-`select`, `back` or `launch` (`.ogg`, `.mp3`, `.wav`) in
-`<userData>/sounds/<systemId>/`; a file there replaces the synthesised sound.
-Audio is suspended with the render loop.
+**Sound (`audio/SoundEngine.js`, `audio/voices.js`).** Each event plays a
+file the user put in `<userData>/sounds/<systemId>/` if there is one, and
+otherwise the synthesiser. Nothing is shipped as a recording.
+
+The synthesiser gives each console a voice modelled on its sound hardware:
+pulse waves at the NES and Game Boy duty cycles with a noise channel, the
+SNES's echo, two-operator FM for Genesis, a bit-crusher for the GBA, glassy
+bells and plucks in reverb for the early disc consoles, low dark tones for
+PS2 and Xbox, and near-silent ticks for the later machines. Sounds play
+only in response to an action; there is no background sound. These are
+original sounds, not recordings. Audio is suspended with the render loop.
+
+Because nobody can listen during development, a dev-only check renders every
+voice and event offline and reports its peak level; it caught a voice that
+was silent.
 
 **Auto-update (`updater.js`).** Installed builds check the project's GitHub
 releases with `electron-updater`, download in the background and install on
@@ -409,7 +428,8 @@ Verified by running it (Windows 11, Electron 38, three r180):
 
 - The shelf renders, navigates, inspects, flips and shows spines; the front,
   back and spine map onto the correct faces, unmirrored.
-- Unit tests (`npm test`, 25 passing): VDF, registry and `gamelist.xml`
+- Unit tests (`npm test`, 28 passing): every console has a theme and a voice,
+  and text is readable on every backdrop; VDF, registry and `gamelist.xml`
   parsers, title parsing, the ROM scanner on a fixture tree, every emulator's
   argv, per-game overrides, Continue (Dolphin disc ids, newest-state
   selection, the RetroArch config), the launch bridge against a stand-in
@@ -434,7 +454,8 @@ Not verified, because the environment had nothing to test against:
   standard libretro ones but were not launched.
 - A physical controller. Controller input was simulated with real id strings;
   keyboard input, which shares the same action path, was tested directly.
-- What the sounds sound like. The audio graph runs, but nobody listened.
+- What the sounds sound like. Every voice is rendered offline and checked
+  for silence and clipping, but nobody has listened to them.
 - A complete update. The updater finds the release feed, but downloading and
   installing a newer version needs two published releases that both carry
   `latest.yml`.

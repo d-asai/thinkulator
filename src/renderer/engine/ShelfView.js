@@ -2,7 +2,8 @@ import * as THREE from './three.js';
 import { profileFor } from './BoxFactory.js';
 import { SmoothValue, clamp } from '../util/motion.js';
 import { letterOf } from '../library/shelves.js';
-import { makeWoodTexture, drawShelfLabel, LABEL_SIZE } from './ShelfDressing.js';
+import { drawShelfLabel, LABEL_SIZE } from './ShelfDressing.js';
+import { themeFor } from '../themes.js';
 
 export const SHELF_SPACING = 2.95; //  vertical distance between shelves
 const BOX_GAP = 0.2; //                 air between neighbouring boxes
@@ -51,28 +52,26 @@ export class ShelfView {
   }
 
   /**
-   * Each shelf is a walnut board with a darker rail along its front edge. A
-   * printed card in the rail names the shelf, the way a shop or library
-   * shelf is labelled. Five sets are pooled and re-used as the camera moves.
+   * Each shelf is a plain board with a slim rail along its front edge and a
+   * printed card naming it. Board, rail and card take their colours from the
+   * shelf's console theme. Five sets are pooled and re-used as the camera moves.
    */
   _buildPlanks() {
     const renderer = this.stage.renderer;
-    this.woodTexture = makeWoodTexture(renderer);
-    this.plankGeometry = new THREE.BoxGeometry(60, 0.1, 1.9);
-    this.railGeometry = new THREE.BoxGeometry(60, 0.3, 0.06);
+    this.plankGeometry = new THREE.BoxGeometry(60, 0.07, 1.9);
+    this.railGeometry = new THREE.BoxGeometry(60, 0.24, 0.05);
     const labelHeight = 0.2;
     this.labelGeometry = new THREE.PlaneGeometry(labelHeight * (LABEL_SIZE.width / LABEL_SIZE.height), labelHeight);
-    // A trace of emissive keeps the underside of the shelf above from going pure black.
-    this.plankMaterial = new THREE.MeshStandardMaterial({ map: this.woodTexture, color: 0xb9a48f, roughness: 0.62, metalness: 0, emissive: 0x0f0a07 });
-    this.railMaterial = new THREE.MeshStandardMaterial({ map: this.woodTexture, color: 0x57483c, roughness: 0.5, metalness: 0, emissive: 0x0a0705 });
 
     this.planks = [];
     for (let i = 0; i < PLANKS; i++) {
-      const plank = new THREE.Mesh(this.plankGeometry, this.plankMaterial);
+      const plankMaterial = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0 });
+      const railMaterial = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0 });
+      const plank = new THREE.Mesh(this.plankGeometry, plankMaterial);
       plank.receiveShadow = true;
 
-      const rail = new THREE.Mesh(this.railGeometry, this.railMaterial);
-      rail.position.set(0, -0.1, 0.98);
+      const rail = new THREE.Mesh(this.railGeometry, railMaterial);
+      rail.position.set(0, -0.085, 0.975);
       plank.add(rail);
 
       const canvas = document.createElement('canvas');
@@ -81,13 +80,13 @@ export class ShelfView {
       const texture = new THREE.CanvasTexture(canvas);
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-      const label = new THREE.Mesh(this.labelGeometry, new THREE.MeshBasicMaterial({ map: texture }));
-      label.position.set(0, -0.1, 1.012);
+      const label = new THREE.Mesh(this.labelGeometry, new THREE.MeshBasicMaterial({ map: texture, toneMapped: false }));
+      label.position.set(0, -0.085, 1.002);
       plank.add(label);
 
       plank.visible = false;
       this.root.add(plank);
-      this.planks.push({ plank, label, canvas, texture, key: '', shade: -1 });
+      this.planks.push({ plank, plankMaterial, railMaterial, label, canvas, texture, key: '', shade: -1 });
     }
   }
 
@@ -454,13 +453,16 @@ export class ShelfView {
       if (!shelf) continue;
       const p = this.planks[((s % PLANKS) + PLANKS) % PLANKS];
       p.plank.visible = true;
-      p.plank.position.set(0, this._shelfY(s) - 0.05, 0.15);
+      p.plank.position.set(0, this._shelfY(s) - 0.035, 0.15);
 
-      // Reprint the card only when this board is handed to a different shelf.
+      // Repaint and reprint only when this board is handed to a different shelf.
       const key = `${shelf.system.id}|${shelf.games.length}|${shelf.system.name}`;
       if (key !== p.key) {
         p.key = key;
-        drawShelfLabel(p.canvas, shelf.system);
+        const theme = themeFor(shelf.system);
+        p.plankMaterial.color.set(theme.shelf);
+        p.railMaterial.color.set(theme.rail);
+        drawShelfLabel(p.canvas, shelf.system, theme.card);
         p.texture.needsUpdate = true;
       }
       const shade = (0.3 + 0.7 * shelf.focus.value) * (1 - 0.8 * this.dim.value);
@@ -485,13 +487,15 @@ export class ShelfView {
       box.material.dispose();
       box.mesh.userData.box = null;
     }
-    for (const p of this.planks) { p.label.material.dispose(); p.texture.dispose(); }
+    for (const p of this.planks) {
+      p.label.material.dispose();
+      p.texture.dispose();
+      p.plankMaterial.dispose();
+      p.railMaterial.dispose();
+    }
     this.plankGeometry.dispose();
     this.railGeometry.dispose();
     this.labelGeometry.dispose();
-    this.plankMaterial.dispose();
-    this.railMaterial.dispose();
-    this.woodTexture.dispose();
     this.stage.scene.remove(this.root);
     this.all.length = 0;
     this.free.length = 0;
