@@ -21,15 +21,23 @@
     <div id="info-meta"></div>
   </section>
 
+  <aside id="details" hidden aria-label="Game details"></aside>
+  <div id="letter" hidden aria-hidden="true"></div>
+
   <footer id="hints"></footer>
 
   <div id="empty" hidden>
-    <h2>Your shelf is empty</h2>
-    <p>Add a ROM folder for a system, or install a game through Steam, Epic, the Xbox app or Battle.net.</p>
-    <button id="empty-open" type="button">Open settings</button>
+    <h2 class="when-empty">Your shelf is empty</h2>
+    <p class="when-empty">Add a ROM folder for a system, or install a game through Steam, Epic, GOG or another launcher.</p>
+    <button class="when-empty" id="empty-open" type="button">Open settings</button>
+    <h2 class="when-filtered">No games match your filters</h2>
+    <p class="when-filtered">Your library has games, but the current view options hide all of them.</p>
+    <button class="when-filtered" id="empty-reset" type="button">Reset filters</button>
   </div>
 
   <aside id="settings" hidden aria-label="Settings"></aside>
+  <div id="menu" hidden role="dialog" aria-label="Menu"></div>
+  <div id="entry" hidden role="dialog" aria-label="Text entry"></div>
 
   <div id="toasts" aria-live="polite"></div>
   <div id="fade"><div id="fade-label"></div></div>

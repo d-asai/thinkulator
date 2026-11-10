@@ -18,7 +18,8 @@ function defaults() {
     version: 1,
     systems,
     emulators,
-    pc: { steam: true, epic: true, xbox: true, battlenet: true },
+    pc: { steam: true, epic: true, xbox: true, battlenet: true, gog: true, ea: true, ubisoft: true },
+    updates: { auto: true },
     scraper: {
       online: true,
       screenscraper: { devid: '', devpassword: '', softname: 'megashelf', ssid: '', sspassword: '' },
@@ -110,6 +111,7 @@ class Config {
       })),
       pc: { ...this.data.pc },
       scraperOnline: this.data.scraper.online,
+      autoUpdate: this.data.updates.auto,
     };
   }
 }

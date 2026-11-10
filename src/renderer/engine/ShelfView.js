@@ -1,6 +1,7 @@
 import * as THREE from './three.js';
 import { profileFor } from './BoxFactory.js';
 import { SmoothValue, clamp } from '../util/motion.js';
+import { letterOf } from '../library/shelves.js';
 
 export const SHELF_SPACING = 2.95; //  vertical distance between shelves
 const BOX_GAP = 0.2; //                 air between neighbouring boxes
@@ -33,7 +34,6 @@ export class ShelfView {
     this.root = new THREE.Group();
     stage.scene.add(this.root);
 
-    this.systems = [];
     this.shelves = [];
     this.active = 0;
     this.camY = new SmoothValue(0, 0.17);
@@ -70,45 +70,41 @@ export class ShelfView {
   // ---- library -------------------------------------------------------------
 
   /**
-   * @param restore optional { systemId, cursors: { [systemId]: gameId } }
+   * @param defs    shelves from library/shelves.js: { id, name, short, accent, kind, games }
+   *                (games are already filtered and sorted)
+   * @param restore optional { systemId, cursors: { [shelfId]: gameId } }
    */
-  setLibrary(systems, games, restore = null) {
+  setShelves(defs, restore = null) {
     const previous = restore || this.snapshot();
     this._releaseAll();
 
-    this.systems = systems;
-    const bySystem = new Map(systems.map((s) => [s.id, []]));
-    for (const g of games) if (bySystem.has(g.systemId)) bySystem.get(g.systemId).push(g);
-
-    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
     this.shelves = [];
-    for (const system of systems) {
-      const list = bySystem.get(system.id);
-      if (!list.length) continue; // empty systems get no shelf
-      list.sort((a, b) => collator.compare(a.sortTitle, b.sortTitle) || collator.compare(a.title, b.title));
-
+    for (const def of defs) {
+      if (!def.games.length) continue;
       let maxW = 0;
-      for (const g of list) {
-        g.profile = profileFor(g, system);
+      for (const g of def.games) {
+        g.profile = profileFor(g, g.system);
         maxW = Math.max(maxW, g.profile.w);
       }
       let cursor = 0;
-      const wanted = previous && previous.cursors && previous.cursors[system.id];
-      if (wanted) cursor = Math.max(0, list.findIndex((g) => g.id === wanted));
+      const wanted = previous && previous.cursors && previous.cursors[def.id];
+      if (wanted) cursor = Math.max(0, def.games.findIndex((g) => g.id === wanted));
 
       this.shelves.push({
-        system, games: list, cursor,
+        // `system` is the shelf's identity (name, short, accent). For a
+        // per-console shelf that is the console; a game's own console is game.system.
+        system: def, games: def.games, cursor,
         spacing: maxW + BOX_GAP,
         scroll: new SmoothValue(cursor, 0.115),
         focus: new SmoothValue(0, 0.13),
-        accent: new THREE.Color(system.accent),
+        accent: new THREE.Color(def.accent),
       });
     }
 
-    const index = previous ? this.shelves.findIndex((s) => s.system.id === previous.systemId) : -1;
+    const index = previous ? this.shelves.findIndex((sh) => sh.system.id === previous.systemId) : -1;
     this.active = index >= 0 ? index : 0;
     this.camY.snap(this._shelfY(this.active));
-    this.shelves.forEach((s, i) => s.focus.snap(i === this.active ? 1 : 0));
+    this.shelves.forEach((sh, i) => sh.focus.snap(i === this.active ? 1 : 0));
     this.windowKey = '';
   }
 
@@ -158,6 +154,47 @@ export class ShelfView {
     this.active = next;
     this.camY.target = this._shelfY(next);
     return true;
+  }
+
+  /**
+   * Jumps to the start of the next or previous letter group on the active shelf.
+   * @returns the letter landed on, or '' if the cursor could not move.
+   */
+  jumpLetter(direction) {
+    const sh = this.activeShelf;
+    if (!sh) return '';
+    const games = sh.games;
+    const current = letterOf(games[sh.cursor]);
+    let i = sh.cursor;
+    if (direction > 0) {
+      while (i < games.length && letterOf(games[i]) === current) i++;
+      if (i >= games.length) return '';
+    } else {
+      // First go to the start of this group; only then step into the previous one.
+      while (i > 0 && letterOf(games[i - 1]) === current) i--;
+      if (i === sh.cursor) {
+        if (i === 0) return '';
+        const previous = letterOf(games[i - 1]);
+        i--;
+        while (i > 0 && letterOf(games[i - 1]) === previous) i--;
+      }
+    }
+    sh.cursor = i;
+    sh.scroll.target = i;
+    return letterOf(games[i]);
+  }
+
+  /** Moves the selection to a game wherever it is shelved. Prefers its console's shelf. */
+  goToGame(gameId) {
+    let fallback = null;
+    for (let si = 0; si < this.shelves.length; si++) {
+      const item = this.shelves[si].games.findIndex((g) => g.id === gameId);
+      if (item < 0) continue;
+      if (this.shelves[si].system.kind === 'system') { this.goTo(si, item); return true; }
+      fallback = fallback || [si, item];
+    }
+    if (fallback) this.goTo(fallback[0], fallback[1]);
+    return !!fallback;
   }
 
   goTo(shelfIndex, itemIndex) {
@@ -231,8 +268,15 @@ export class ShelfView {
     const shelf = this.shelves[box.shelf];
     const token = ++box.token;
     const priority = Math.abs(box.item - shelf.cursor) + Math.abs(box.shelf - this.active) * 20;
-    const handle = this.textures.acquire(box.game, shelf.system, box.profile, SHELF_RES, priority);
+    const handle = this.textures.acquire(box.game, box.game.system, box.profile, SHELF_RES, priority);
     box.handle = handle;
+    if (handle.ready) {
+      // Already cached (a shelf rebuild, or scrolling back): show it at once, no fade.
+      box.texture = handle.ready;
+      box.material.map = handle.ready;
+      box.fade.snap(1);
+      return;
+    }
     box.material.map = this.factory.placeholder;
     box.fade.snap(0);
     handle.promise.then((texture) => {
@@ -268,7 +312,7 @@ export class ShelfView {
     if (on && !box.hiHandle) {
       const token = box.token;
       const res = box.game.art && box.game.art.front ? 2048 : 1024;
-      const handle = this.textures.acquire(box.game, this.shelves[box.shelf].system, box.profile, res, -1);
+      const handle = this.textures.acquire(box.game, box.game.system, box.profile, res, -1);
       box.hiHandle = handle;
       handle.promise.then((texture) => {
         if (!texture || box.token !== token || box.hiHandle !== handle) return;

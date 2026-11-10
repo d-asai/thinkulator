@@ -2,6 +2,7 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { retroarchResume, dolphinResume } = require('./resume');
 
 const WIN = process.platform === 'win32';
 const env = (name, fallback = '') => process.env[name] || fallback;
@@ -46,6 +47,7 @@ const EMULATORS = {
       }
       return ['-L', corePath, '--fullscreen', gamePath];
     },
+    resume: retroarchResume,
   },
 
   pcsx2: {
@@ -85,6 +87,7 @@ const EMULATORS = {
     async args({ gamePath }) {
       return ['-b', '-e', gamePath, '-C', 'Dolphin.Display.Fullscreen=True'];
     },
+    resume: dolphinResume,
   },
 
   xemu: {
@@ -105,9 +108,10 @@ const EMULATORS = {
  * verifies that everything it references exists, so a failure surfaces as a
  * readable message instead of a spawn ENOENT.
  */
-async function resolveLaunch(game, system, config) {
+async function resolveLaunch(game, system, config, { overrides = {}, resume = false, userDir = '' } = {}) {
   const systemConfig = config.systems[system.id] || {};
-  const emulatorId = systemConfig.emulator || system.emulator;
+  // A per-game choice beats the system's, which beats the built-in default.
+  const emulatorId = overrides.emulator || systemConfig.emulator || system.emulator;
   const emulator = EMULATORS[emulatorId];
   if (!emulator) throw new LaunchError('NO_EMULATOR', `Unknown emulator "${emulatorId}" for ${system.name}.`);
 
@@ -127,9 +131,20 @@ async function resolveLaunch(game, system, config) {
     throw new LaunchError('GAME_MISSING', `Game file is missing: ${gamePath}`);
   }
 
-  const args = await emulator.args({ gamePath, exe, core: systemConfig.core || system.core, emulatorConfig });
-  const extra = Array.isArray(emulatorConfig.extraArgs) ? emulatorConfig.extraArgs.filter((a) => typeof a === 'string') : [];
-  return { emulatorId, emulatorName: emulator.name, exe, args: [...extra, ...args], cwd: path.dirname(exe) };
+  // A core only carries over when the game still uses the system's own emulator.
+  const sameEmulator = emulatorId === (systemConfig.emulator || system.emulator);
+  const core = overrides.core || (sameEmulator ? systemConfig.core || system.core : '');
+  const args = await emulator.args({ gamePath, exe, core, emulatorConfig });
+
+  const strings = (list) => (Array.isArray(list) ? list.filter((a) => typeof a === 'string') : []);
+  const extra = [...strings(emulatorConfig.extraArgs), ...strings(overrides.extraArgs)];
+
+  let resumed = false;
+  if (resume && emulator.resume) {
+    const resumeArgs = await emulator.resume({ gamePath, exe, userDir }).catch(() => null);
+    if (resumeArgs) { extra.push(...resumeArgs); resumed = true; }
+  }
+  return { emulatorId, emulatorName: emulator.name, exe, args: [...extra, ...args], cwd: path.dirname(exe), resumed };
 }
 
 module.exports = { EMULATORS, resolveLaunch, LaunchError };

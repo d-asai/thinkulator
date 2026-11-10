@@ -9,6 +9,7 @@ const { parseTitle, makeId } = require('../../titles');
 
 // Runtimes and tools that live in steamapps but are not games.
 const NOT_GAMES = /^(Steamworks Common Redistributables|Steam Linux Runtime|Proton( |$)|Steam Controller Configs|SteamVR$|Steam Audio)/i;
+const SOUNDTRACK = /\b(Soundtrack|OST)$/i;
 const STATE_FULLY_INSTALLED = 4;
 
 async function exists(p) {
@@ -88,7 +89,7 @@ async function scanSteam() {
       }
       const appId = vdfGet(state, 'appid');
       const name = vdfGet(state, 'name');
-      if (!appId || !name || NOT_GAMES.test(name)) continue;
+      if (!appId || !name || NOT_GAMES.test(name) || SOUNDTRACK.test(name)) continue;
       if (!(Number(vdfGet(state, 'StateFlags')) & STATE_FULLY_INSTALLED)) continue;
 
       const installDir = path.join(appsDir, 'common', vdfGet(state, 'installdir') || '');

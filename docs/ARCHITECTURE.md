@@ -7,8 +7,10 @@ sandboxed page that draws the shelf with Three.js and knows games only by id.
 ```
 ┌──────────────────────── main process (Node) ────────────────────────┐
 │  Config ── Library ──┬── ROM scanner ──► worker_thread (fs walk)     │
-│                      └── PC scanners (Steam, Epic, Xbox, Battle.net) │
+│   UserData  MetaStore└── PC scanners (Steam, Epic, Xbox, Battle.net, │
+│                                       GOG, EA, Ubisoft)              │
 │  ArtStore ◄── Scraper (sidecar, ScreenScraper, libretro, Steam)      │
+│  Updater (GitHub releases)                                           │
 │  LaunchBridge ──► child_process (emulators) / URI handlers (stores)  │
 │  shelf:// protocol  (renderer files, three.js, cached art)           │
 └───────────────▲──────────────────────────────────┬──────────────────┘
@@ -16,6 +18,8 @@ sandboxed page that draws the shelf with Three.js and knows games only by id.
 ┌───────────────┴──────────────────────────────────▼──────────────────┐
 │  renderer (sandboxed, contextIsolation, strict CSP)                  │
 │  App ── InputManager (gamepad + keyboard)                            │
+│      ── shelves.js (favourites, recents, collections, filters)      │
+│      ── Menu / TextEntry (controller-driven overlays) ── SoundEngine │
 │      ── ShelfView (layout, pooling) ── BoxFactory (geometry, PBR)    │
 │      ── Inspector (360° inspection)                                  │
 │      ── TextureManager (LRU cache) ──► Worker (atlas stitching)      │
@@ -75,6 +79,9 @@ the others. No native modules: the registry is read by running `reg.exe query`
 | Epic | `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests\*.item` (JSON). Skips incomplete installs, DLC (`MainGameAppName` differs) and Unreal Engine builds. | `com.epicgames.launcher://apps/<namespace>:<catalogItemId>:<appName>?action=launch&silent=true` |
 | Xbox app | `HKLM\SOFTWARE\Microsoft\GamingServices\PackageRepository`: `Root\<id>` gives the install folder, `Package` gives the package full name. `appxmanifest.xml` supplies the application id, `MicrosoftGame.config` the display name. | `explorer.exe shell:AppsFolder\<PackageFamilyName>!<AppId>` |
 | Battle.net | Windows uninstall entries whose command runs `Blizzard Uninstaller.exe --uid=<product>`. | `Battle.net.exe --exec="launch <code>"`, falling back to `battlenet://<code>` |
+| GOG | `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\<id>` (name, exe, working directory). DLC entries (`dependsOn`) are skipped. | The game's own executable, directly. GOG games are DRM-free, so Galaxy is not needed. |
+| EA app | `HKLM\SOFTWARE\WOW6432Node\EA Games\<title>` gives the install folder; `__Installer\installerdata.xml` there names the executable. | That executable, which hands off to the EA app for licensing. |
+| Ubisoft Connect | `...\Ubisoft\Launcher\Installs\<id>` for the folder, the `Uplay Install <id>` uninstall entry for the name. | `uplay://launch/<id>/0` |
 
 ## 3. Box art: scraping and the unified texture
 
@@ -133,7 +140,7 @@ build the argv that boots a game full-screen and exits when the game closes.
 
 | Emulator | Systems | Arguments |
 |---|---|---|
-| RetroArch | NES (`mesen`), SNES (`snes9x`) | `-L <cores>/<core>_libretro.dll --fullscreen "<rom>"` |
+| RetroArch | NES (`mesen`), SNES (`snes9x`), Genesis (`genesis_plus_gx`), Game Boy and GBC (`gambatte`), GBA (`mgba`), N64 (`mupen64plus_next`), PS1 (`swanstation`), Dreamcast (`flycast`), DS (`melonds`), PSP (`ppsspp`) | `-L <cores>/<core>_libretro.dll --fullscreen "<rom>"` |
 | PCSX2 (Qt) | PS2 | `-batch -fullscreen -nogui -- "<iso>"` |
 | RPCS3 | PS3 | `--no-gui --fullscreen "<EBOOT.BIN or iso>"` |
 | Dolphin | GameCube, Wii | `-b -e "<iso>" -C Dolphin.Display.Fullscreen=True` |
@@ -143,6 +150,26 @@ build the argv that boots a game full-screen and exits when the game closes.
 before anything is spawned, so a problem is a sentence ("RetroArch core not
 found: ...") rather than `ENOENT`. Per-emulator `extraArgs` in `config.json`
 are prepended.
+
+**Per-game launch settings.** A game can override the emulator, the RetroArch
+core and add its own arguments (game menu, Launch settings). The order is
+game, then system, then built-in default. A system's core is only inherited
+while the game still uses that system's emulator.
+
+**Continue (`resume.js`).** Starts a game from its latest save state, for the
+emulators that have a documented way to do it:
+
+- RetroArch: `--appendconfig` layers a two-line config that turns on
+  `savestate_auto_save` and `savestate_auto_load` for that run, so quitting
+  saves and the next Continue loads. The user's own `retroarch.cfg` is not
+  modified.
+- Dolphin: the six-character disc id is read from the image (offset 0 of an
+  `.iso`/`.gcm`, `0x200` of a `.wbfs`), the newest `<ID>.sNN` in `StateSaves`
+  is found, and it is loaded with `-s`. Compressed images (`.rvz`, `.gcz`) are
+  not supported; with no state, the game simply starts normally.
+
+PCSX2, RPCS3 and xemu have no equivalent command line, so their games do not
+offer Continue.
 
 `LaunchBridge` runs one session at a time:
 
@@ -224,17 +251,22 @@ short way round and the hi-res texture is released. Everything else dims.
 
 Gamepad API, standard mapping (an Xbox controller reports it natively):
 
-| Control | Browse | Inspect |
-|---|---|---|
-| D-pad / left stick | move game (X), change shelf (Y) | rotate (stick) |
-| Right stick | | rotate |
-| A | inspect | play |
-| B | | back |
-| X / Y | | flip to back / show spine |
-| LB / RB | jump 10 games | |
-| LT / RT | | zoom |
-| Menu | play | play |
-| View | settings | |
+| Control | Shelf | Inspecting | Menus | Text entry |
+|---|---|---|---|---|
+| D-pad / left stick | move game (X), change shelf (Y) | rotate (stick) | move | move over keys |
+| Right stick | | rotate | | |
+| A | inspect | play | select | type key |
+| B | | back | back | cancel |
+| X | game menu | flip to back | | delete |
+| Y | search | show spine | | space |
+| LB / RB | jump 10 games | | | previous / next result |
+| LT / RT | jump to previous / next letter | zoom | | |
+| Menu | play | play | | done |
+| View | main menu | game menu | back | |
+
+Keyboard equivalents: arrows, Enter, Esc, X, Y, PageUp/PageDown, `[` `]`
+(letter), `/` (search), F (favourite), M (game menu), P (play), F1 (menu).
+Right-click opens the game menu.
 
 What makes it feel mechanical:
 
@@ -300,31 +332,104 @@ Under Electron's `userData` directory:
 | `library.json` | The cached game index |
 | `art/<gameId>/front.*`, `back.*`, `spine.*` | Scraped source images |
 | `art/<gameId>/atlas-<profile>-512.webp` | Stitched texture cache |
-| `art/_attempts.json` | When each art lookup last failed |
+| `art/_attempts.json` | When each art or details lookup last failed |
+| `userdata.json` | Favourites, hidden games, renames, play history, per-game launch settings, collections |
+| `meta.json` | Scraped game details |
+| `sounds/<systemId>/` | Your own audio files, if any |
 
-## 9. What has and has not been verified
+## 9. Library features
+
+**User data (`userdata.js`).** Favourites, hidden flags, renamed titles, play
+counts and time, per-game launch settings and collections live in
+`userdata.json`, separate from the scanned index, so a rescan never loses
+them. Only non-default values are stored. The renderer changes them through
+one validated IPC call (`game:patch`).
+
+**Shelves (`renderer/library/shelves.js`).** A pure function turns
+`games + collections + view options` into the shelf list: Favourites,
+Recently played (24 most recent), the user's collections, then one shelf per
+system. View options are sort (title, recently played, most played, release
+year), a region filter, favourites only, show hidden, and hide regional
+duplicates (one copy per title per system, preferring the chosen region, then
+USA, World, Europe, Japan). A game can sit on several shelves; it is one
+object, so a change shows everywhere. Because it is pure, the rules are
+unit-tested directly.
+
+**Search and letter jump.** Search matches every word of the query against
+titles and ranks titles that start with it first. Results update as you type.
+The triggers jump to the next or previous letter group on the shelf and flash
+the letter.
+
+**Menus and text entry.** `Menu` is a stack of lists driven by the same
+actions as the shelf, so every feature is reachable from a controller.
+`TextEntry` shows an on-screen keyboard for controllers and hides it when a
+real keyboard is in use. Game data is rebuilt into shelves only once no menu
+is open and no box is out, so the shelf never shifts under the user.
+
+**Game details.** Description, year, genre, players and rating appear beside
+an inspected box. Sources, in order: an EmulationStation `gamelist.xml`
+beside the ROMs (offline; the format Skraper, ES-DE, Batocera and RetroPie
+write), ScreenScraper when credentials are configured, and Steam's public
+`appdetails` endpoint for Steam games. Other storefronts have no keyless
+source, so their games show play statistics only.
+
+**Art picker.** From the game menu, choose a file for the front, back or
+spine, look the art up again, or keep the generated cover. Dropping an image
+on an inspected box sets whichever face is turned towards you.
+
+**Sound (`audio/SoundEngine.js`).** Interface sounds and a quiet ambient bed,
+all synthesised with Web Audio. Each system belongs to a family that imitates
+its era's sound hardware (pulse waves for NES and Game Boy, two-operator FM
+for Genesis, sine pads for the disc consoles) and has its own key. These are
+original sounds, not the consoles' real boot or menu audio, which is
+copyrighted. To use your own recordings, put `ambient`, `move`, `shelf`,
+`select`, `back` or `launch` (`.ogg`, `.mp3`, `.wav`) in
+`<userData>/sounds/<systemId>/`; a file there replaces the synthesised sound.
+Audio is suspended with the render loop.
+
+**Auto-update (`updater.js`).** Installed builds check the project's GitHub
+releases with `electron-updater`, download in the background and install on
+quit. A pre-release build follows pre-releases. It needs `latest.yml` (written
+by `npm run dist`) uploaded with each release, next to the installer and its
+`.blockmap`.
+
+## 10. What has and has not been verified
 
 Verified by running it (Windows 11, Electron 38, three r180):
 
 - The shelf renders, navigates, inspects, flips and shows spines; the front,
   back and spine map onto the correct faces, unmirrored.
-- Unit tests (`npm test`, 11 passing): VDF and registry parsers, title
-  parsing, the ROM scanner on a fixture tree (cue/bin pairs, PS3 folders,
-  skipped folders, missing directories), every emulator's argv, and the
-  launch bridge against a stand-in process (session tracking, refusal of a
-  second launch, tree termination, failed-boot reporting, URI allow-list).
-- Steam and Xbox app scanning against a real machine, and real covers through
-  the whole art pipeline including the atlas disk cache.
+- Unit tests (`npm test`, 25 passing): VDF, registry and `gamelist.xml`
+  parsers, title parsing, the ROM scanner on a fixture tree, every emulator's
+  argv, per-game overrides, Continue (Dolphin disc ids, newest-state
+  selection, the RetroArch config), the launch bridge against a stand-in
+  process, user data and collections, the shelf rules (virtual shelves,
+  sorting, region filter, duplicate collapsing), search ranking, controller
+  detection, and that every system has a real emulator and box profile.
+- In the running app: favourites, collections, hiding, renaming, per-game
+  launch settings, search, letter jump, filters, the details card from a
+  `gamelist.xml`, input-method switching, and all of it persisting across a
+  restart. Custom sound files are served from the sounds folder.
+- Steam and Xbox app scanning against a real machine, real covers through the
+  whole art pipeline, and the Steam details endpoint against one public app.
+- The packaged build starts with these features and its updater reaches the
+  GitHub release feed.
 - Resource counts after a full-library scroll (table above).
 
 Not verified, because the environment had nothing to test against:
 
-- Launching the five real emulators. The argument strings follow each
-  project's documented CLI and are unit-tested as strings, but no emulator
-  was installed.
-- A physical controller. The mapping is the W3C standard layout; keyboard
-  input, which shares the same action path, was tested.
-- Epic and Battle.net (not installed), ScreenScraper (needs credentials), and
-  the online libretro and Steam CDN lookups (deliberately not exercised).
+- Launching the real emulators, including Continue. The argument strings
+  follow each project's documented CLI and are unit-tested as strings, but no
+  emulator was installed. The core names for the newer systems are the
+  standard libretro ones but were not launched.
+- A physical controller. Controller input was simulated with real id strings;
+  keyboard input, which shares the same action path, was tested directly.
+- What the sounds sound like. The audio graph runs, but nobody listened.
+- A complete update. The updater finds the release feed, but downloading and
+  installing a newer version needs two published releases that both carry
+  `latest.yml`.
+- Epic, Battle.net, GOG, EA and Ubisoft detection (none installed; EA's
+  manifest parsing is unit-tested), ScreenScraper (needs credentials), and
+  the online libretro and Steam CDN art lookups.
 - macOS and Linux. Paths and process-group handling are written for them but
   only Windows was run.

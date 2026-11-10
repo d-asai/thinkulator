@@ -16,7 +16,14 @@ const subscribe = (channel) => (handler) => {
 contextBridge.exposeInMainWorld('megashelf', {
   getLibrary: () => ipcRenderer.invoke('library:get'),
   rescan: () => ipcRenderer.invoke('library:rescan'),
-  launch: (gameId) => ipcRenderer.invoke('game:launch', gameId),
+  launch: (gameId, options) => ipcRenderer.invoke('game:launch', gameId, options),
+  patchGame: (gameId, changes) => ipcRenderer.invoke('game:patch', gameId, changes),
+  createCollection: (name) => ipcRenderer.invoke('collections:create', name),
+  deleteCollection: (id) => ipcRenderer.invoke('collections:delete', id),
+  toggleInCollection: (collectionId, gameId) => ipcRenderer.invoke('collections:toggle', collectionId, gameId),
+  setArt: (gameId, slot, bytes) => ipcRenderer.invoke('art:set', gameId, slot, bytes),
+  pickArt: (gameId, slot) => ipcRenderer.invoke('art:pick', gameId, slot),
+  resetArt: (gameId, mode) => ipcRenderer.invoke('art:reset', gameId, mode),
   terminate: () => ipcRenderer.invoke('session:terminate'),
   saveAtlas: (gameId, key, version, bytes) => ipcRenderer.invoke('art:saveAtlas', gameId, key, version, bytes),
 
@@ -30,6 +37,8 @@ contextBridge.exposeInMainWorld('megashelf', {
   onLibraryChanged: subscribe('library:changed'),
   onStatus: subscribe('library:status'),
   onArtUpdated: subscribe('art:updated'),
+  onGameUpdated: subscribe('game:updated'),
+  onAppUpdate: subscribe('app:update'),
   onSessionStarted: subscribe('session:started'),
   onSessionEnded: subscribe('session:ended'),
 });

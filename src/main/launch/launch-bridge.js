@@ -8,7 +8,7 @@ const { resolveLaunch, LaunchError } = require('./emulators');
 const WIN = process.platform === 'win32';
 const STDERR_TAIL = 4096;
 const GRACE_MS = 3000;
-const URI_ALLOW = /^(steam|com\.epicgames\.launcher|battlenet):/i;
+const URI_ALLOW = /^(steam|com\.epicgames\.launcher|battlenet|uplay):/i;
 
 /**
  * Owns the lifetime of the one game that can run at a time.
@@ -33,15 +33,16 @@ class LaunchBridge extends EventEmitter {
     return this.session !== null;
   }
 
-  async launch(game, system, config) {
+  /** @param options { overrides, resume, userDir } forwarded to resolveLaunch */
+  async launch(game, system, config, options = {}) {
     if (this.session) throw new LaunchError('BUSY', 'A game is already running.');
     if (game.source === 'demo') throw new LaunchError('DEMO', 'Demo entries cannot be launched. Add a ROM folder in Settings.');
     if (game.source === 'pc') return this._launchPc(game);
-    return this._launchEmulated(game, system, config);
+    return this._launchEmulated(game, system, config, options);
   }
 
-  async _launchEmulated(game, system, config) {
-    const plan = await resolveLaunch(game, system, config);
+  async _launchEmulated(game, system, config, options) {
+    const plan = await resolveLaunch(game, system, config, options);
 
     // A placeholder session blocks a second launch while spawn is in flight.
     const session = { gameId: game.id, title: game.title, child: null, startedAt: Date.now(), stderr: '', killTimer: null, ended: false };
@@ -77,7 +78,7 @@ class LaunchBridge extends EventEmitter {
     child.once('exit', (code, signal) => this._finish(session, code, signal));
 
     this.emit('started', { gameId: game.id, title: game.title, tracked: true, emulator: plan.emulatorName });
-    return { tracked: true };
+    return { tracked: true, resumed: plan.resumed };
   }
 
   async _launchPc(game) {

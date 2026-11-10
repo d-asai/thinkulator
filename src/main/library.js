@@ -5,10 +5,15 @@ const { scanRoms } = require('./scanner/rom-scanner');
 const { scanPcGames } = require('./scanner/pc');
 const { readJson, writeJsonAtomic } = require('./config');
 const { demoLibrary } = require('./demo');
+const { SYSTEM_BY_ID } = require('./systems');
+const { EMULATORS } = require('./launch/emulators');
+const { sortKey } = require('./titles');
 
 /**
  * The game index. Holds full records (paths, launch commands) in the main
- * process and hands the renderer a reduced, path-free view.
+ * process and hands the renderer a reduced, path-free view that is already
+ * merged with the user's own data (favourites, renames, play history) and
+ * any scraped details.
  *
  * Start-up shows the index cached from the previous run immediately, then a
  * background rescan reconciles it with the disk and emits 'changed'.
@@ -16,11 +21,13 @@ const { demoLibrary } = require('./demo');
  * Events: 'status' { phase, found, message }   'changed' ()
  */
 class Library extends EventEmitter {
-  constructor({ file, config, artStore, demo = false }) {
+  constructor({ file, config, artStore, metaStore, userData, demo = false }) {
     super();
     this.file = file;
     this.config = config;
     this.art = artStore;
+    this.meta = metaStore;
+    this.user = userData;
     this.demo = demo;
     this.games = new Map();
     this.status = { phase: 'idle', found: 0, message: '' };
@@ -36,7 +43,7 @@ class Library extends EventEmitter {
     }
     const cached = await readJson(this.file, null);
     if (cached && cached.version === 1 && Array.isArray(cached.games)) {
-      for (const g of cached.games) if (g && g.id && g.systemId) this.games.set(g.id, g);
+      for (const g of cached.games) if (g && g.id && g.systemId && SYSTEM_BY_ID.has(g.systemId)) this.games.set(g.id, g);
     }
     return this;
   }
@@ -49,11 +56,28 @@ class Library extends EventEmitter {
     return [...this.games.values()];
   }
 
+  /** The emulator a ROM would launch with: per-game choice, then the system's. */
+  emulatorFor(game) {
+    const system = SYSTEM_BY_ID.get(game.systemId);
+    if (!system || system.kind !== 'rom') return '';
+    const configured = this.config.data.systems[system.id] || {};
+    return this.user.raw(game.id).emulator || configured.emulator || system.emulator;
+  }
+
   /** Renderer view of one game: no file paths, no launch commands. */
   publicGame(g) {
+    const user = this.user.describe(g.id);
+    const emulator = this.emulatorFor(g);
     return {
-      id: g.id, systemId: g.systemId, title: g.title, sortTitle: g.sortTitle,
-      region: g.region || '', launcher: g.launcher || '', art: this.art.describe(g.id),
+      id: g.id, systemId: g.systemId, source: g.source,
+      title: user.title || g.title,
+      sortTitle: user.title ? sortKey(user.title) : g.sortTitle,
+      originalTitle: g.title,
+      region: g.region || '', launcher: g.launcher || '',
+      art: this.art.describe(g.id),
+      meta: this.meta.get(g.id),
+      user,
+      canResume: !!(emulator && EMULATORS[emulator] && EMULATORS[emulator].resume),
     };
   }
 

@@ -12,6 +12,11 @@ const { Scraper } = require('./scraper/scraper');
 const { LaunchBridge } = require('./launch/launch-bridge');
 const { EMULATORS } = require('./launch/emulators');
 const { ID_RE } = require('./titles');
+const { UserData } = require('./userdata');
+const { MetaStore } = require('./scraper/meta-store');
+const { PC_LAUNCHER_IDS } = require('./scanner/pc');
+const { startUpdater } = require('./updater');
+const { SLOTS } = require('./scraper/art-store');
 
 const argv = process.argv.slice(1);
 const flag = (name) => argv.includes(`--${name}`);
@@ -34,7 +39,10 @@ const KILL_SHORTCUT = 'Control+Alt+Backspace';
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+  '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
 };
+const SOUND_EVENTS = ['ambient', 'move', 'shelf', 'select', 'back', 'launch'];
+const SOUND_FILE = /^(ambient|move|shelf|select|back|launch)\.(ogg|mp3|wav)$/;
 
 // A real origin (instead of file://) gives the page ES modules, module
 // workers, fetch() and untainted WebGL textures under a strict CSP.
@@ -43,7 +51,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let win = null;
-let config, artStore, library, scraper, bridge;
+let config, artStore, metaStore, userData, library, scraper, bridge;
+let userDir = '';
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -76,6 +85,10 @@ async function serve(request) {
   if (pathname.startsWith('/art/')) {
     file = artStore.resolve(pathname.slice(5));
     cache = 'no-store'; // art is versioned by the renderer and may be replaced
+  } else if (pathname.startsWith('/sounds/')) {
+    // User-supplied audio:  <userData>/sounds/<systemId>/<event>.ogg
+    const m = pathname.slice(8).match(/^([a-z0-9]+)\/([a-z]+\.(?:ogg|mp3|wav))$/);
+    file = m && SOUND_FILE.test(m[2]) ? path.join(userDir, 'sounds', m[1], m[2]) : null;
   } else if (pathname.startsWith('/vendor/three/')) {
     file = safeJoin(THREE_ROOT, pathname.slice('/vendor/three/'.length));
   } else {
@@ -102,24 +115,85 @@ function handle(channel, fn) {
 }
 
 function registerIpc() {
-  handle('library:get', () => ({
+  handle('library:get', async () => ({
     systems: SYSTEMS.map(publicSystem),
     games: library.list(),
+    collections: userData.collections(),
+    sounds: await customSounds(),
+    emulators: Object.entries(EMULATORS).map(([id, e]) => ({ id, name: e.name })),
     status: library.status,
     demo: DEMO,
   }));
 
   handle('library:rescan', () => { library.rescan(); return true; });
 
-  handle('game:launch', async (gameId) => {
-    const game = typeof gameId === 'string' && ID_RE.test(gameId) ? library.get(gameId) : null;
+  handle('game:launch', async (gameId, options) => {
+    const game = knownGame(gameId);
     if (!game) return { ok: false, error: 'Unknown game.' };
     try {
-      const result = await bridge.launch(game, SYSTEM_BY_ID.get(game.systemId), config.data);
-      return { ok: true, tracked: result.tracked };
+      const result = await bridge.launch(game, SYSTEM_BY_ID.get(game.systemId), config.data, {
+        overrides: userData.raw(game.id), resume: !!(options && options.resume), userDir,
+      });
+      userData.recordLaunch(game.id);
+      sendGame(game.id);
+      return { ok: true, tracked: result.tracked, resumed: !!result.resumed };
     } catch (err) {
       return { ok: false, error: err.message, code: err.code || 'ERROR' };
     }
+  });
+
+  // ---- per-game user data ---------------------------------------------------
+
+  handle('game:patch', (gameId, changes) => {
+    const game = knownGame(gameId);
+    const clean = game && sanitizePatch(changes);
+    if (!clean) return null;
+    userData.patch(game.id, clean);
+    return library.publicGame(game);
+  });
+
+  handle('collections:create', (name) => { userData.createCollection(name); return userData.collections(); });
+  handle('collections:delete', (id) => { userData.deleteCollection(String(id)); return userData.collections(); });
+  handle('collections:toggle', (collectionId, gameId) => {
+    const game = knownGame(gameId);
+    if (game) userData.toggleInCollection(String(collectionId), game.id);
+    return userData.collections();
+  });
+
+  // ---- box art chosen by the user -------------------------------------------
+
+  handle('art:set', async (gameId, slot, bytes) => {
+    const game = knownGame(gameId);
+    if (!game || !SLOTS.includes(slot) || !(bytes instanceof ArrayBuffer || ArrayBuffer.isView(bytes))) return { ok: false, error: 'Bad request.' };
+    return setArt(game, slot, Buffer.from(bytes));
+  });
+
+  handle('art:pick', async (gameId, slot) => {
+    const game = knownGame(gameId);
+    if (!game || !SLOTS.includes(slot)) return { ok: false, error: 'Bad request.' };
+    const result = await dialog.showOpenDialog(win, {
+      title: `Choose the ${slot} image for ${game.title}`,
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+    try {
+      return await setArt(game, slot, await fsp.readFile(result.filePaths[0]));
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // 'auto' forgets the current art and looks it up again; 'generated' keeps the
+  // procedural cover and tells the scraper to leave this game alone.
+  handle('art:reset', async (gameId, mode) => {
+    const game = knownGame(gameId);
+    if (!game) return { ok: false, error: 'Unknown game.' };
+    await artStore.clear(game.id);
+    userData.patch(game.id, { noArt: mode === 'generated' });
+    if (mode !== 'generated') { scraper.resetAttempts(game.id); scraper.enqueue([game]); }
+    send('art:updated', { id: game.id, art: artStore.describe(game.id) });
+    return { ok: true };
   });
 
   handle('session:terminate', () => bridge.terminate());
@@ -176,7 +250,9 @@ function registerIpc() {
     if (name === 'scraperOnline') {
       config.data.scraper.online = on;
       if (on) { scraper.resetAttempts(); scraper.enqueue(library.all()); }
-    } else if (['steam', 'epic', 'xbox', 'battlenet'].includes(name)) {
+    } else if (name === 'autoUpdate') {
+      config.data.updates.auto = on;
+    } else if (PC_LAUNCHER_IDS.includes(name)) {
       config.data.pc[name] = on;
       library.rescan();
     } else {
@@ -189,6 +265,67 @@ function registerIpc() {
   handle('app:quit', () => app.quit());
 }
 
+function knownGame(gameId) {
+  return typeof gameId === 'string' && ID_RE.test(gameId) ? library.get(gameId) || null : null;
+}
+
+/** Pushes one game's current public record to the renderer. */
+function sendGame(gameId) {
+  const game = library.get(gameId);
+  if (game) send('game:updated', { game: library.publicGame(game) });
+}
+
+/** Validates a renderer-supplied change set; anything unexpected is dropped. */
+function sanitizePatch(changes) {
+  if (!changes || typeof changes !== 'object') return null;
+  const out = {};
+  if ('favorite' in changes) out.favorite = changes.favorite === true;
+  if ('hidden' in changes) out.hidden = changes.hidden === true;
+  if ('title' in changes) out.title = typeof changes.title === 'string' ? changes.title.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  if ('emulator' in changes) out.emulator = Object.hasOwn(EMULATORS, changes.emulator) ? changes.emulator : '';
+  if ('core' in changes) out.core = typeof changes.core === 'string' && /^[\w.-]{1,64}$/.test(changes.core.trim()) ? changes.core.trim() : '';
+  if ('extraArgs' in changes) {
+    out.extraArgs = Array.isArray(changes.extraArgs)
+      ? changes.extraArgs.filter((a) => typeof a === 'string' && a.length && a.length <= 200).slice(0, 24)
+      : [];
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+async function setArt(game, slot, buffer) {
+  try {
+    await artStore.saveImage(game.id, slot, buffer);
+  } catch {
+    return { ok: false, error: 'That file is not a PNG, JPEG or WebP image.' };
+  }
+  userData.patch(game.id, { noArt: false });
+  send('art:updated', { id: game.id, art: artStore.describe(game.id) });
+  return { ok: true };
+}
+
+/** Audio the user dropped into <userData>/sounds/<systemId>/, as { systemId: { event: file } }. */
+async function customSounds() {
+  const root = path.join(userDir, 'sounds');
+  const out = {};
+  let dirs;
+  try {
+    dirs = await fsp.readdir(root, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const d of dirs) {
+    if (!d.isDirectory() || !/^[a-z0-9]+$/.test(d.name)) continue;
+    const files = await fsp.readdir(path.join(root, d.name)).catch(() => []);
+    for (const f of files) {
+      const lower = f.toLowerCase();
+      if (!SOUND_FILE.test(lower) || lower !== f) continue;
+      const event = lower.slice(0, lower.indexOf('.'));
+      if (SOUND_EVENTS.includes(event)) (out[d.name] || (out[d.name] = {}))[event] = f;
+    }
+  }
+  return out;
+}
+
 function wireServices() {
   library.on('status', (status) => send('library:status', status));
   library.on('changed', () => {
@@ -197,6 +334,7 @@ function wireServices() {
   });
 
   scraper.on('updated', (gameId) => send('art:updated', { id: gameId, art: artStore.describe(gameId) }));
+  scraper.on('meta', (gameId) => sendGame(gameId));
 
   bridge.on('started', (info) => {
     send('session:started', info);
@@ -207,6 +345,7 @@ function wireServices() {
   });
   bridge.on('ended', (info) => {
     globalShortcut.unregister(KILL_SHORTCUT);
+    if (!info.failed) { userData.addPlayTime(info.gameId, info.durationMs / 1000); sendGame(info.gameId); }
     send('session:ended', info);
     if (win && !win.isDestroyed()) {
       if (win.isMinimized()) win.restore();
@@ -229,6 +368,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
       backgroundThrottling: !CAPTURE,
+      autoplayPolicy: 'no-user-gesture-required', // shelf ambience may start before the first key press
     },
   });
 
@@ -258,6 +398,14 @@ function runCapture() {
       await wait(3500);
       for (const key of SCRIPT.split(',').filter(Boolean)) {
         if (/^\d+$/.test(key)) { await wait(Number(key)); continue; }
+        if (key.startsWith('Type:')) { // type text into the focused field
+          for (const ch of key.slice(5)) {
+            win.webContents.sendInputEvent({ type: 'char', keyCode: ch });
+            await wait(40);
+          }
+          await wait(200);
+          continue;
+        }
         if (key.startsWith('Pad:')) { // press D-pad right on a simulated controller with this id
           const id = JSON.stringify(key.slice(4));
           await win.webContents.executeJavaScript(`(() => {
@@ -286,7 +434,7 @@ function runCapture() {
         await wait(260);
       }
       await wait(1800);
-      const stats = await win.webContents.executeJavaScript('window.__megashelfStats ? JSON.stringify(window.__megashelfStats()) : ""');
+      const stats = await win.webContents.executeJavaScript('window.__megashelfStats ? Promise.resolve(window.__megashelfStats()).then(JSON.stringify) : ""');
       if (stats) console.log('[stats]', stats);
       const image = await win.webContents.capturePage();
       await fsp.writeFile(CAPTURE, image.toPNG());
@@ -309,12 +457,15 @@ if (!CAPTURE && !app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
-    const userDir = app.getPath('userData');
+    userDir = app.getPath('userData');
 
     config = await new Config(path.join(userDir, 'config.json')).load();
     artStore = await new ArtStore(path.join(userDir, 'art')).init();
-    library = await new Library({ file: path.join(userDir, 'library.json'), config, artStore, demo: DEMO }).init();
-    scraper = await new Scraper({ artStore, config, attemptsFile: path.join(userDir, 'art', '_attempts.json') }).init();
+    metaStore = await new MetaStore(path.join(userDir, 'meta.json')).init();
+    userData = await new UserData(path.join(userDir, 'userdata.json')).load();
+    await fsp.mkdir(path.join(userDir, 'sounds'), { recursive: true });
+    library = await new Library({ file: path.join(userDir, 'library.json'), config, artStore, metaStore, userData, demo: DEMO }).init();
+    scraper = await new Scraper({ artStore, metaStore, userData, config, attemptsFile: path.join(userDir, 'art', '_attempts.json') }).init();
     bridge = new LaunchBridge({ openExternal: (uri) => shell.openExternal(uri) });
 
     protocol.handle('shelf', serve);
@@ -324,6 +475,12 @@ if (!CAPTURE && !app.requestSingleInstanceLock()) {
 
     // The cached index is already on screen; reconcile it with the disk.
     library.rescan();
+
+    startUpdater({
+      enabled: config.data.updates.auto && (!CAPTURE || flag('check-updates')),
+      verbose: flag('check-updates'),
+      notify: (update) => send('app:update', update),
+    });
   });
 
   app.on('window-all-closed', () => app.quit());
@@ -332,6 +489,8 @@ if (!CAPTURE && !app.requestSingleInstanceLock()) {
     globalShortcut.unregisterAll();
     if (bridge) bridge.dispose();
     if (scraper) scraper.stop();
+    if (userData) userData.flush();
+    if (metaStore) metaStore.flush();
     if (library) library.dispose();
   });
 }

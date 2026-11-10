@@ -1,6 +1,6 @@
 {
   "name": "megashelf",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Unified 3D emulation and PC game frontend",
   "author": "d-asai",
   "main": "src/main/main.js",
@@ -12,9 +12,10 @@
     "demo": "electron . --windowed --demo",
     "test": "node --test",
     "icons": "electron scripts/make-icons.js",
-    "dist": "electron-builder --win --x64"
+    "dist": "electron-builder --win --x64 --publish never"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "three": "^0.180.0"
   },
   "devDependencies": {
@@ -43,6 +44,14 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "artifactName": "MegaShelf-Setup-${version}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "d-asai",
+        "repo": "thinkulator",
+        "releaseType": "prerelease"
+      }
+    ]
   }
 }

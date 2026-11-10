@@ -1,6 +1,9 @@
 import { el } from './Hud.js';
 
-const PC_LABELS = { steam: 'Steam', epic: 'Epic Games Store', xbox: 'Xbox app', battlenet: 'Battle.net' };
+const PC_LABELS = {
+  steam: 'Steam', epic: 'Epic Games Store', xbox: 'Xbox app', battlenet: 'Battle.net',
+  gog: 'GOG', ea: 'EA app', ubisoft: 'Ubisoft Connect',
+};
 
 /**
  * Slide-over settings: emulator paths, ROM folders, launcher toggles.
@@ -93,12 +96,17 @@ export class SettingsPanel {
 
     root.append(el('h3', '', 'Box art'));
     root.append(this._toggleRow(
-      'Download missing box art',
-      'Looks up covers by ROM file name (libretro thumbnails) and Steam app id. Art next to your ROMs is always used.',
+      'Download missing box art and details',
+      'Looks up covers and game details by ROM file name (libretro thumbnails) and Steam app id. Art and a gamelist.xml next to your ROMs are always used.',
       s.scraperOnline, (on) => this._apply(this.api.setOption('scraperOnline', on)),
     ));
 
     root.append(el('h3', '', 'Application'));
+    root.append(this._toggleRow(
+      'Update automatically',
+      'Downloads new versions from GitHub in the background and installs them when you quit.',
+      s.autoUpdate, (on) => this._apply(this.api.setOption('autoUpdate', on)),
+    ));
     const quit = el('div', 'row');
     const quitMain = el('div', 'row-main');
     quitMain.append(el('div', 'row-title', 'Quit MegaShelf'), el('div', 'row-sub', 'F11 toggles full screen. Ctrl+Alt+Backspace force-closes a running emulator.'));

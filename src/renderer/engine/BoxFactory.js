@@ -22,6 +22,35 @@ export const PROFILES = {
     w: 1.78, h: 1.27, d: 0.3, style: 'cardboard', inset: 0, caseColor: '#101010',
     surface: { roughness: 0.88, metalness: 0, clearcoat: 0.04, clearcoatRoughness: 0.9, envMapIntensity: 0.35 },
   },
+  // Genesis games came in a chunky black plastic clamshell.
+  'genesis-clamshell': {
+    w: 1.32, h: 1.8, d: 0.25, style: 'case', inset: 0.014, caseColor: '#0c0c0e',
+    surface: { roughness: 0.5, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 0.7 },
+  },
+  // Game Boy family: small, nearly square cardboard.
+  'gb-cardboard': {
+    w: 1.24, h: 1.24, d: 0.22, style: 'cardboard', inset: 0, caseColor: '#121212',
+    surface: { roughness: 0.88, metalness: 0, clearcoat: 0.04, clearcoatRoughness: 0.9, envMapIntensity: 0.35 },
+  },
+  // N64 boxes are landscape, like SNES.
+  'n64-cardboard': {
+    w: 1.78, h: 1.27, d: 0.3, style: 'cardboard', inset: 0, caseColor: '#101010',
+    surface: { roughness: 0.88, metalness: 0, clearcoat: 0.04, clearcoatRoughness: 0.9, envMapIntensity: 0.35 },
+  },
+  // CD jewel case (PlayStation, Dreamcast): wider than tall, hard clear plastic.
+  'jewel-case': {
+    w: 1.42, h: 1.25, d: 0.1, style: 'case', inset: 0.02, caseColor: '#cfd6de',
+    surface: { roughness: 0.16, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.2 },
+  },
+  'nds-case': {
+    w: 1.37, h: 1.25, d: 0.15, style: 'case', inset: 0.018, caseColor: '#17171b',
+    surface: { roughness: 0.42, metalness: 0, clearcoat: 0.85, clearcoatRoughness: 0.12, envMapIntensity: 0.9 },
+  },
+  // UMD case: tall and narrow, clear.
+  'psp-case': {
+    w: 1.05, h: 1.77, d: 0.14, style: 'case', inset: 0.016, caseColor: '#dfe6ee',
+    surface: { roughness: 0.25, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.1 },
+  },
   'gamecube-case': {
     w: 1.35, h: 1.9, d: 0.14, style: 'case', inset: 0.018, caseColor: '#16161a',
     surface: { roughness: 0.42, metalness: 0, clearcoat: 0.85, clearcoatRoughness: 0.12, envMapIntensity: 0.9 },
@@ -66,7 +95,11 @@ export const PROFILES = {
 
 for (const [id, profile] of Object.entries(PROFILES)) profile.id = id;
 
-const PC_BY_LAUNCHER = { steam: 'pc-slim', epic: 'pc-steelbook', xbox: 'pc-xbox', battlenet: 'pc-bigbox' };
+// GOG's catalogue is classic PC games, so it gets the big box too.
+const PC_BY_LAUNCHER = {
+  steam: 'pc-slim', epic: 'pc-steelbook', xbox: 'pc-xbox', battlenet: 'pc-bigbox',
+  gog: 'pc-bigbox', ea: 'pc-slim', ubisoft: 'pc-steelbook',
+};
 
 /** Chooses the physical box for a game: platform first, PC storefront second. */
 export function profileFor(game, system) {

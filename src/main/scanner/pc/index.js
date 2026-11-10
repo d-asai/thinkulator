@@ -4,8 +4,15 @@ const { scanSteam } = require('./steam');
 const { scanEpic } = require('./epic');
 const { scanXbox } = require('./xbox');
 const { scanBattleNet } = require('./battlenet');
+const { scanGog } = require('./gog');
+const { scanEa } = require('./ea');
+const { scanUbisoft } = require('./ubisoft');
 
-const SCANNERS = { steam: scanSteam, epic: scanEpic, xbox: scanXbox, battlenet: scanBattleNet };
+const SCANNERS = {
+  steam: scanSteam, epic: scanEpic, xbox: scanXbox, battlenet: scanBattleNet,
+  gog: scanGog, ea: scanEa, ubisoft: scanUbisoft,
+};
+const PC_LAUNCHER_IDS = Object.keys(SCANNERS);
 
 /**
  * Runs every enabled launcher scanner concurrently. One launcher failing
@@ -29,4 +36,4 @@ async function scanPcGames(enabled) {
   return { games, status };
 }
 
-module.exports = { scanPcGames };
+module.exports = { scanPcGames, PC_LAUNCHER_IDS };

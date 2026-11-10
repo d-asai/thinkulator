@@ -9,7 +9,7 @@ const SECOND = ['Quest', 'Racers', 'Legends', 'Tactics', 'Odyssey', 'Fighters', 
   'Protocol', 'Horizon', 'Frontier', 'Rally', 'Chronicle', 'Arena', 'Voyage', 'Syndicate', 'Garden', 'Engine'];
 const SUFFIX = ['', '', '', ' II', ' III', ' 64', ' Zero', ' DX', ': Origins', ' Online', ': Remastered', ' Advance'];
 const REGION = ['USA', 'USA', 'Europe', 'Japan', 'World'];
-const PC_LAUNCHERS = ['steam', 'steam', 'steam', 'epic', 'xbox', 'battlenet'];
+const PC_LAUNCHERS = ['steam', 'steam', 'steam', 'epic', 'xbox', 'battlenet', 'gog', 'ea', 'ubisoft'];
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -26,7 +26,7 @@ function mulberry32(seed) {
  * shelf can be explored (and profiled) without any ROMs or launchers. Entries
  * are marked source:'demo' and the launch bridge refuses to start them.
  */
-function demoLibrary(perSystem = 60) {
+function demoLibrary(perSystem = 40) {
   const games = [];
   SYSTEMS.forEach((system, si) => {
     const rand = mulberry32(1337 + si * 97);

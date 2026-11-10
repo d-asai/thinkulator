@@ -110,6 +110,18 @@ class ArtStore {
     return true;
   }
 
+  /** Removes every image and atlas for a game. */
+  async clear(id) {
+    if (!ID_RE.test(id)) throw new Error('bad art target');
+    await fsp.rm(path.join(this.root, id), { recursive: true, force: true });
+    const entry = this._entry(id);
+    entry.front = null;
+    entry.back = null;
+    entry.spine = null;
+    entry.atlases.clear();
+    entry.v++;
+  }
+
   /** Maps "/<id>/<file>" from the shelf:// protocol to a real path, or null. */
   resolve(relative) {
     const m = relative.match(/^([a-f0-9]{16})\/([a-z0-9][a-z0-9.-]*\.(?:png|jpg|webp))$/);

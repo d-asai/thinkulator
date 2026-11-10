@@ -66,6 +66,8 @@ export class TextureManager {
     let released = false;
     return {
       promise: entry.promise,
+      // Set when the texture was already cached, so the caller can show it this frame.
+      ready: entry.state === 'ready' ? entry.texture : null,
       release: () => {
         if (released) return;
         released = true;

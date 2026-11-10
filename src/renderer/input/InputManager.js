@@ -26,12 +26,15 @@ import { detectPadType, faceButtons } from './devices.js';
 const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, MENU: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
 const SHARED_BUTTON_ACTIONS = [
   [BTN.LB, 'pageLeft'], [BTN.RB, 'pageRight'], [BTN.MENU, 'play'], [BTN.VIEW, 'settings'],
+  // The triggers jump by letter on the shelf; while inspecting they zoom (analogue, read below).
+  [BTN.LT, 'letterPrev'], [BTN.RT, 'letterNext'],
 ];
 const MOUSE_MOVE_THRESHOLD = 6; // px of travel before the mouse counts as "in use"
 const KEY_ACTIONS = {
   Enter: 'accept', ' ': 'accept', Escape: 'back', Backspace: 'back',
   x: 'flip', X: 'flip', y: 'spine', Y: 'spine', p: 'play', P: 'play',
   PageUp: 'pageLeft', PageDown: 'pageRight', F1: 'settings', Tab: 'settings',
+  '/': 'search', F3: 'search', '[': 'letterPrev', ']': 'letterNext', f: 'favorite', F: 'favorite', m: 'gameMenu', M: 'gameMenu',
 };
 const HELD_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '-', '=', '+']);
 
