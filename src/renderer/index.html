@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; worker-src 'self'">
+  <title>MegaShelf</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="stage"></canvas>
+  <div id="vignette"></div>
+
+  <nav id="rail" aria-label="Systems"></nav>
+
+  <header id="status" hidden></header>
+
+  <section id="info">
+    <div id="info-system"></div>
+    <h1 id="info-title"></h1>
+    <div id="info-meta"></div>
+  </section>
+
+  <footer id="hints"></footer>
+
+  <div id="empty" hidden>
+    <h2>Your shelf is empty</h2>
+    <p>Add a ROM folder for a system, or install a game through Steam, Epic, the Xbox app or Battle.net.</p>
+    <button id="empty-open" type="button">Open settings</button>
+  </div>
+
+  <aside id="settings" hidden aria-label="Settings"></aside>
+
+  <div id="toasts" aria-live="polite"></div>
+  <div id="fade"><div id="fade-label"></div></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

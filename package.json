@@ -1,0 +1,20 @@
+{
+  "name": "megashelf",
+  "version": "0.1.0",
+  "description": "Unified 3D emulation and PC game frontend",
+  "main": "src/main/main.js",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --windowed",
+    "demo": "electron . --windowed --demo",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0"
+  }
+}
