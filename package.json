@@ -1,7 +1,8 @@
 {
   "name": "megashelf",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "Unified 3D emulation and PC game frontend",
+  "author": "d-asai",
   "main": "src/main/main.js",
   "private": true,
   "license": "MIT",
@@ -9,12 +10,36 @@
     "start": "electron .",
     "dev": "electron . --windowed",
     "demo": "electron . --windowed --demo",
-    "test": "node --test"
+    "test": "node --test",
+    "dist": "electron-builder --win --x64"
   },
   "dependencies": {
     "three": "^0.180.0"
   },
   "devDependencies": {
-    "electron": "^38.0.0"
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "io.github.d-asai.megashelf",
+    "productName": "MegaShelf",
+    "asar": false,
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!node_modules/three/examples",
+      "!node_modules/three/src",
+      "!node_modules/three/build/*.min.js",
+      "!node_modules/three/build/three.webgpu*",
+      "!node_modules/three/build/three.tsl*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "MegaShelf-Setup-${version}.${ext}"
+    }
   }
 }

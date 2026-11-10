@@ -20,6 +20,12 @@ npm run demo
 no setup. `npm start` runs full-screen against your real library, and
 `npm run dev` does the same in a window. `npm test` runs the unit tests.
 
+To build the Windows installer into `dist/`:
+
+```bash
+npm run dist
+```
+
 ## Set up your library
 
 Press **View** on the controller (or **F1**) to open Settings.
