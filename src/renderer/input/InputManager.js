@@ -13,14 +13,21 @@
  *   View (Back)                   F1, Tab           settings
  *   right stick (left in inspect) arrows in inspect look.x / look.y
  *   LT / RT                       - / =             zoom
+ *
+ * The table shows Xbox names. PlayStation pads use the same positions; on
+ * Nintendo pads A/B and X/Y are swapped so the letters still match (see
+ * devices.js). The manager also tracks which device was used last, so the UI
+ * can show the right button names and hide the cursor.
  */
+
+import { detectPadType, faceButtons } from './devices.js';
 
 // Standard-mapping indices (https://w3c.github.io/gamepad/#remapping).
 const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, MENU: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
-const BUTTON_ACTIONS = [
-  [BTN.A, 'accept'], [BTN.B, 'back'], [BTN.X, 'flip'], [BTN.Y, 'spine'],
+const SHARED_BUTTON_ACTIONS = [
   [BTN.LB, 'pageLeft'], [BTN.RB, 'pageRight'], [BTN.MENU, 'play'], [BTN.VIEW, 'settings'],
 ];
+const MOUSE_MOVE_THRESHOLD = 6; // px of travel before the mouse counts as "in use"
 const KEY_ACTIONS = {
   Enter: 'accept', ' ': 'accept', Escape: 'back', Backspace: 'back',
   x: 'flip', X: 'flip', y: 'spine', Y: 'spine', p: 'play', P: 'play',
@@ -89,10 +96,23 @@ export class InputManager {
     this.gamepadIndex = -1;
     this.wheel = 0;
 
+    /**
+     * The input method in use right now: whichever device the user touched
+     * last. 'gamepad' | 'keyboard' | 'mouse'. `padType` is the controller
+     * family ('xbox' | 'playstation' | 'nintendo') and decides button labels
+     * and which face button confirms.
+     */
+    this.device = 'keyboard';
+    this.padType = 'xbox';
+    this.onDeviceChange = null; //   (device, padType) => void
+    this.onPadConnection = null; //  (connected, padType) => void
+    this._mouse = { x: null, y: null, travel: 0 };
+
     this._onKeyDown = (e) => {
       if (!this.enabled) return;
       const typing = e.target instanceof HTMLElement && e.target.closest('input, textarea, select');
       if (typing) return;
+      if (HELD_KEYS.has(e.key) || KEY_ACTIONS[e.key]) this._setDevice('keyboard');
       if (HELD_KEYS.has(e.key)) {
         this.keys.add(e.key);
         e.preventDefault();
@@ -103,14 +123,46 @@ export class InputManager {
     };
     this._onKeyUp = (e) => this.keys.delete(e.key);
     this._onBlur = () => this.release();
-    this._onConnect = (e) => { if (this.gamepadIndex < 0) this.gamepadIndex = e.gamepad.index; };
-    this._onDisconnect = (e) => { if (e.gamepad.index === this.gamepadIndex) { this.gamepadIndex = -1; this.prevButtons = []; } };
+    this._onConnect = (e) => {
+      if (this.gamepadIndex < 0) this.gamepadIndex = e.gamepad.index;
+      if (this.onPadConnection) this.onPadConnection(true, detectPadType(e.gamepad.id));
+    };
+    this._onDisconnect = (e) => {
+      if (e.gamepad.index !== this.gamepadIndex) return;
+      this.gamepadIndex = -1;
+      this.prevButtons = [];
+      if (this.onPadConnection) this.onPadConnection(false, this.padType);
+      // Never leave the hints showing buttons for a controller that is gone.
+      if (this.device === 'gamepad') this._setDevice('keyboard');
+    };
+    // The mouse only takes over after deliberate movement, so a bumped desk
+    // or sensor jitter does not flip the hints away from the controller.
+    this._onPointerMove = (e) => {
+      const m = this._mouse;
+      if (e.pointerType && e.pointerType !== 'mouse') return;
+      if (m.x !== null) m.travel += Math.abs(e.clientX - m.x) + Math.abs(e.clientY - m.y);
+      m.x = e.clientX;
+      m.y = e.clientY;
+      if (m.travel > MOUSE_MOVE_THRESHOLD) this._setDevice('mouse');
+    };
+    this._onPointerDown = () => this._setDevice('mouse');
 
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
     window.addEventListener('blur', this._onBlur);
     window.addEventListener('gamepadconnected', this._onConnect);
     window.addEventListener('gamepaddisconnected', this._onDisconnect);
+    window.addEventListener('pointermove', this._onPointerMove);
+    window.addEventListener('pointerdown', this._onPointerDown);
+    window.addEventListener('wheel', this._onPointerDown, { passive: true });
+  }
+
+  _setDevice(device, padType = this.padType) {
+    if (device !== 'mouse') this._mouse.travel = 0;
+    if (device === this.device && padType === this.padType) return;
+    this.device = device;
+    this.padType = padType;
+    if (this.onDeviceChange) this.onDeviceChange(device, padType);
   }
 
   /** Forget everything held. Called on blur so nothing "sticks" across a game session. */
@@ -170,10 +222,20 @@ export class InputManager {
       const b = pad.buttons;
       const down = (i) => !!(b[i] && (b[i].pressed || b[i].value > 0.5));
 
-      for (const [index, action] of BUTTON_ACTIONS) {
+      const padType = detectPadType(pad.id);
+      const face = faceButtons(padType);
+      const mapping = [
+        [face.accept, 'accept'], [face.back, 'back'], [face.flip, 'flip'], [face.spine, 'spine'],
+        ...SHARED_BUTTON_ACTIONS,
+      ];
+      for (const [index, action] of mapping) {
         if (down(index) && !this.prevButtons[index]) actions.push(action);
       }
-      for (let i = 0; i < b.length; i++) this.prevButtons[i] = down(i);
+      let anyButton = false;
+      for (let i = 0; i < b.length; i++) {
+        this.prevButtons[i] = down(i);
+        anyButton = anyButton || this.prevButtons[i];
+      }
 
       const [lx, ly] = stick(pad.axes[0] || 0, pad.axes[1] || 0);
       const [rx, ry] = stick(pad.axes[2] || 0, pad.axes[3] || 0);
@@ -195,6 +257,9 @@ export class InputManager {
       look.y = ry;
       if (this.mode === 'inspect') { look.x += lx; look.y += ly; }
       zoom += (b[BTN.RT] ? b[BTN.RT].value : 0) - (b[BTN.LT] ? b[BTN.LT].value : 0);
+
+      // Any deliberate use of the pad (sticks are already past their dead zone here).
+      if (anyButton || lx || ly || rx || ry) this._setDevice('gamepad', padType);
     }
 
     if (this.mode === 'inspect') {
@@ -222,5 +287,8 @@ export class InputManager {
     window.removeEventListener('blur', this._onBlur);
     window.removeEventListener('gamepadconnected', this._onConnect);
     window.removeEventListener('gamepaddisconnected', this._onDisconnect);
+    window.removeEventListener('pointermove', this._onPointerMove);
+    window.removeEventListener('pointerdown', this._onPointerDown);
+    window.removeEventListener('wheel', this._onPointerDown);
   }
 }

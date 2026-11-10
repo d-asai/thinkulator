@@ -1,9 +1,19 @@
+import { GLYPHS } from '../input/devices.js';
+
 const LAUNCHERS = { steam: 'Steam', epic: 'Epic Games', xbox: 'Xbox app', battlenet: 'Battle.net' };
 
+// What each action does in each mode. Button names come from GLYPHS, per device.
 const HINTS = {
-  browse: [['a', 'A', 'Inspect'], ['', 'Menu', 'Play'], ['', 'LB/RB', 'Skip 10'], ['', 'View', 'Settings']],
-  inspect: [['a', 'A', 'Play'], ['x', 'X', 'Flip'], ['y', 'Y', 'Spine'], ['', 'LT/RT', 'Zoom'], ['b', 'B', 'Back']],
-  settings: [['b', 'B', 'Close']],
+  browse: [['accept', 'Inspect'], ['play', 'Play'], ['page', 'Skip 10'], ['settings', 'Settings']],
+  inspect: [['accept', 'Play'], ['flip', 'Flip'], ['spine', 'Spine'], ['zoom', 'Zoom'], ['back', 'Back']],
+  settings: [['back', 'Close']],
+  none: [],
+};
+// The mouse has gestures rather than buttons, so it gets its own wording.
+const MOUSE_HINTS = {
+  browse: [['Click', 'Select, then inspect'], ['Wheel', 'Scroll'], ['F1', 'Settings']],
+  inspect: [['Drag', 'Rotate'], ['Wheel', 'Zoom'], ['Click away', 'Back'], ['Enter', 'Play']],
+  settings: [['Esc', 'Close']],
   none: [],
 };
 
@@ -35,7 +45,18 @@ export class Hud {
     this.info = $('info');
     this.railItems = [];
     this.hintMode = '';
+    this.hintKey = '';
+    this.device = 'keyboard';
+    this.padType = 'xbox';
     this.lastKey = '';
+  }
+
+  /** Re-labels the hints for the device in use and hides the cursor off-mouse. */
+  setDevice(device, padType) {
+    this.device = device;
+    this.padType = padType;
+    document.body.dataset.input = device;
+    this.setHints(this.hintMode || 'none');
   }
 
   setShelves(shelves) {
@@ -80,9 +101,19 @@ export class Hud {
   }
 
   setHints(mode) {
-    if (mode === this.hintMode) return;
+    const key = `${mode}|${this.device}|${this.padType}`;
+    if (key === this.hintKey) return;
+    this.hintKey = key;
     this.hintMode = mode;
-    this.hints.replaceChildren(...(HINTS[mode] || []).map(([cls, glyph, label]) => {
+
+    let rows;
+    if (this.device === 'mouse') {
+      rows = (MOUSE_HINTS[mode] || []).map(([glyph, label]) => [glyph, '', label]);
+    } else {
+      const glyphs = GLYPHS[this.device === 'gamepad' ? this.padType : 'keyboard'] || GLYPHS.xbox;
+      rows = (HINTS[mode] || []).map(([action, label]) => [glyphs[action][0], glyphs[action][1] || '', label]);
+    }
+    this.hints.replaceChildren(...rows.map(([glyph, cls, label]) => {
       const hint = el('div', 'hint');
       hint.append(el('span', `glyph ${cls}`, glyph), el('span', '', label));
       return hint;

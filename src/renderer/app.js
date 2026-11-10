@@ -5,6 +5,7 @@ import { TextureManager } from './engine/TextureManager.js';
 import { ShelfView } from './engine/ShelfView.js';
 import { Inspector } from './engine/Inspector.js';
 import { InputManager } from './input/InputManager.js';
+import { PAD_NAMES } from './input/devices.js';
 import { Hud } from './ui/Hud.js';
 import { SettingsPanel } from './ui/SettingsPanel.js';
 
@@ -59,6 +60,12 @@ class App {
       this.shelf.setLibrary(this.systems, this.games, this.shelf.snapshot());
       this.invalidate();
     };
+
+    this.input.onDeviceChange = (device, padType) => this.hud.setDevice(device, padType);
+    this.input.onPadConnection = (connected, padType) => {
+      this.hud.toast(`${PAD_NAMES[padType] || 'Controller'} ${connected ? 'connected' : 'disconnected'}`, 'info');
+    };
+    this.hud.setDevice(this.input.device, this.input.padType);
 
     this.frame = this.frame.bind(this);
     this._bindDom();

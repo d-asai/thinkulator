@@ -164,6 +164,15 @@ html, body {
 }
 
 .glyph.a { background: #7fd15a; }
+.glyph.ps-cross { background: #7c9fe0; }
+.glyph.ps-circle { background: #f0605a; }
+.glyph.ps-square { background: #e79ad6; }
+.glyph.ps-triangle { background: #5fd0b2; }
+
+/* With a controller or keyboard in hand the pointer is just clutter. */
+body[data-input="gamepad"],
+body[data-input="gamepad"] *,
+body[data-input="keyboard"] #stage { cursor: none; }
 .glyph.b { background: #f0605a; }
 .glyph.x { background: #58a6f5; }
 .glyph.y { background: #f2c94c; }

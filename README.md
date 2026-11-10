@@ -55,6 +55,12 @@ its Online Updater. Change cores, or add per-emulator `extraArgs`, in
 | Menu | P | Play | Play |
 | View | F1 | Settings | |
 
+MegaShelf detects which input you are using and relabels the on-screen hints
+to match: Xbox, PlayStation (✕ ○ □ △, L1/R1) or Nintendo button names,
+keyboard keys, or mouse gestures. It switches the moment you touch a different
+device, and hides the cursor while you use a controller. On Nintendo pads A
+confirms and B goes back.
+
 Mouse: click a box to select it, click again to inspect, drag to rotate, wheel
 to scroll or zoom. **F11** toggles full screen. **Ctrl+Alt+Backspace**
 force-closes a running emulator.

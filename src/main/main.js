@@ -258,6 +258,28 @@ function runCapture() {
       await wait(3500);
       for (const key of SCRIPT.split(',').filter(Boolean)) {
         if (/^\d+$/.test(key)) { await wait(Number(key)); continue; }
+        if (key.startsWith('Pad:')) { // press D-pad right on a simulated controller with this id
+          const id = JSON.stringify(key.slice(4));
+          await win.webContents.executeJavaScript(`(() => {
+            const real = navigator.getGamepads.bind(navigator);
+            const pad = (pressed) => ({ id: ${id}, index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
+              buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: pressed && i === 15, value: pressed && i === 15 ? 1 : 0 })) });
+            let pressed = true;
+            navigator.getGamepads = () => [pad(pressed)];
+            Object.defineProperty(document, 'hasFocus', { value: () => true, configurable: true });
+            setTimeout(() => { pressed = false; }, 120);
+            setTimeout(() => { navigator.getGamepads = real; }, 600);
+          })()`);
+          await wait(700);
+          continue;
+        }
+        if (key === 'Mouse') { // sweep the pointer across the window
+          for (let x = 300; x <= 600; x += 60) {
+            win.webContents.sendInputEvent({ type: 'mouseMove', x, y: 300 });
+            await wait(40); // separate frames, or Chromium coalesces them into one event
+          }
+          continue;
+        }
         win.webContents.sendInputEvent({ type: 'keyDown', keyCode: key });
         await wait(60);
         win.webContents.sendInputEvent({ type: 'keyUp', keyCode: key });

@@ -250,6 +250,16 @@ What makes it feel mechanical:
   frame-rate independent, the same on a 60 Hz TV and a 240 Hz monitor.
 - **Haptics.** A short rumble tick per slot, a heavier one per shelf, and a
   thud at the end of a shelf.
+- **Input method detection.** `InputManager.device` is whichever device was
+  touched last: `gamepad` on any button or stick past its dead zone,
+  `keyboard` on a bound key, `mouse` on a click, wheel or more than 6 px of
+  pointer travel (so sensor jitter cannot steal focus from a controller). The
+  controller family comes from the Gamepad `id` string (`devices.js`):
+  vendor `054c` is PlayStation, `057e` is Nintendo, anything else is treated
+  as Xbox. The HUD relabels its hints from a per-device glyph table, the
+  cursor is hidden off-mouse, and on Nintendo pads the confirm and back
+  buttons are swapped so A still accepts. Unplugging the active controller
+  falls back to keyboard hints.
 - **Focus gating.** Chromium keeps delivering gamepad state to a page while
   another app is in front. Controller input is ignored unless the window has
   focus, and held state is cleared on blur, so playing a game never scrolls
