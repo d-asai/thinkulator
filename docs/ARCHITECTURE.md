@@ -121,7 +121,9 @@ The three scans become **one** texture, laid out like a cover sleeve unfolded:
   PS2, green Xbox, white Wii, clear PC).
 - A missing spine or back is synthesised from the front cover's average
   colour (the back gets a blurred wash of the front). A game with no art at
-  all gets a generated cover seeded by its id, so it is stable across runs.
+  all gets a typographic sleeve: one flat ink from a fixed set of ten, one
+  geometric mark, the title in condensed capitals and a catalogue number, all
+  chosen from its id so it never changes. A shelf of them reads as one series.
 - Decoding and compositing happen on an `OffscreenCanvas` in a Web Worker;
   the result returns as a transferred `ImageBitmap` (zero copy).
 - Shelf-resolution atlases built from real art are saved as WebP in the art
@@ -204,6 +206,14 @@ from a small emissive "studio" scene pre-filtered with PMREM. The IBL is what
 makes clear cases and steelbooks actually reflect. The whole rig follows the
 camera vertically, so a single 2048² shadow map serves any shelf. Tone mapping
 is Khronos PBR Neutral, which keeps cover-art colours true.
+
+The room is dressed by `ShelfDressing.js`: a walnut grain for the shelves, a
+matte plaster for the wall, and a printed card in each shelf's edge rail that
+names the system and counts its games. All three are drawn to small canvases
+at start-up, so no image files are shipped. The card is the only place a
+system's colour appears; the interface itself uses one warm off-white ink, a
+condensed signage typeface (Bahnschrift, with DIN-style fallbacks), hairline
+rules and solid surfaces.
 
 ### 5.2 The matrix layout (`ShelfView.js`)
 

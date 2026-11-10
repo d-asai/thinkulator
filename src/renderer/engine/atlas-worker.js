@@ -15,7 +15,28 @@
  */
 import { atlasLayout, atlasSize } from './atlas-layout.js';
 
-const FONT = '"Segoe UI", "Helvetica Neue", Arial, sans-serif';
+const FONT = '"Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", sans-serif';
+
+// Sleeve colours for games with no artwork: a small, fixed set of printed
+// inks, so a shelf of them looks like one series rather than random noise.
+const SLEEVES = [
+  { paper: '#7c2f2a', ink: '#f1e7d3', second: '#5f211d' }, // oxblood
+  { paper: '#1f3b5c', ink: '#efe6d2', second: '#162c46' }, // navy
+  { paper: '#2f4d3b', ink: '#efe6d2', second: '#223a2c' }, // forest
+  { paper: '#c99a2e', ink: '#1c1711', second: '#a97f1f' }, // mustard
+  { paper: '#1e5a60', ink: '#efe6d2', second: '#154449' }, // teal
+  { paper: '#4c3156', ink: '#efe6d2', second: '#382340' }, // plum
+  { paper: '#a9552b', ink: '#f4ead6', second: '#86411f' }, // rust
+  { paper: '#3b4650', ink: '#efe6d2', second: '#2b343c' }, // slate
+  { paper: '#cfc2a4', ink: '#1c1711', second: '#b9aa88' }, // cream
+  { paper: '#24211e', ink: '#e4dac3', second: '#34302b' }, // charcoal
+];
+
+function setType(ctx, weight, size, spacing = 0) {
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  if ('fontStretch' in ctx) ctx.fontStretch = 'condensed';
+  if ('letterSpacing' in ctx) ctx.letterSpacing = `${spacing}px`;
+}
 
 self.onmessage = async (event) => {
   const msg = event.data;
@@ -97,7 +118,7 @@ function drawCover(ctx, bmp, x, y, w, h) {
 function fitText(ctx, text, maxWidth, maxHeight, maxSize, weight = 800) {
   const words = text.split(/\s+/).filter(Boolean);
   for (let size = maxSize; size >= 8; size -= Math.max(1, Math.round(size * 0.06))) {
-    ctx.font = `${weight} ${size}px ${FONT}`;
+    setType(ctx, weight, size);
     const lines = [];
     let line = '';
     let ok = true;
@@ -109,10 +130,10 @@ function fitText(ctx, text, maxWidth, maxHeight, maxSize, weight = 800) {
     }
     if (!ok) continue;
     if (line) lines.push(line);
-    const lineHeight = size * 1.08;
+    const lineHeight = size * 0.98;
     if (lines.length * lineHeight <= maxHeight) return { size, lines, lineHeight };
   }
-  ctx.font = `${weight} 8px ${FONT}`;
+  setType(ctx, weight, 8);
   return { size: 8, lines: [text], lineHeight: 9 };
 }
 
@@ -126,179 +147,146 @@ function clipRect(ctx, x, y, w, h, fn) {
 }
 
 // ---- synthesised faces -----------------------------------------------------
+//
+// A game with no artwork gets a typographic sleeve in the manner of an
+// archive edition: one flat ink, one geometric mark, the title set large in
+// condensed capitals, and a catalogue number. Flat colour only, so it prints
+// crisply at any size and never looks like a missing image.
 
-function proceduralFront(ctx, m, tone, x, y, w, h) {
+const catalogue = (id) => String(hashString(id) % 10000).padStart(4, '0');
+
+function proceduralFront(ctx, m, sleeve, x, y, w, h) {
   const rand = mulberry32(hashString(m.id));
   clipRect(ctx, x, y, w, h, () => {
-    const g = ctx.createLinearGradient(x, y, x + w * 0.6, y + h);
-    g.addColorStop(0, hsl(tone.h, 0.62, 0.36));
-    g.addColorStop(0.55, hsl(tone.h + 28, 0.6, 0.2));
-    g.addColorStop(1, hsl(tone.h + 60, 0.55, 0.08));
-    ctx.fillStyle = g;
+    ctx.fillStyle = sleeve.paper;
     ctx.fillRect(x, y, w, h);
 
-    // A seeded motif so every title gets its own, stable artwork.
-    const motif = Math.floor(rand() * 3);
-    ctx.globalCompositeOperation = 'screen';
-    if (motif === 0) {
-      for (let i = 0; i < 5; i++) {
-        const r = w * (0.18 + rand() * 0.42);
-        const cx = x + rand() * w, cy = y + rand() * h * 0.7;
-        const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        rg.addColorStop(0, hsl(tone.h + 150 + rand() * 60, 0.8, 0.55, 0.55));
-        rg.addColorStop(1, hsl(tone.h + 150, 0.8, 0.5, 0));
-        ctx.fillStyle = rg;
-        ctx.fillRect(x, y, w, h);
-      }
-    } else if (motif === 1) {
-      ctx.save();
-      ctx.translate(x + w / 2, y + h * 0.38);
-      ctx.rotate(-0.5 + rand() * 0.3);
-      for (let i = -6; i < 7; i++) {
-        ctx.fillStyle = hsl(tone.h + 170 + i * 6, 0.75, 0.55, 0.1 + rand() * 0.25);
-        ctx.fillRect(-w * 1.2, i * h * 0.07, w * 2.4, h * (0.012 + rand() * 0.03));
-      }
-      ctx.restore();
+    // One mark per title, chosen and placed by its id so it never changes.
+    const pad = w * 0.085;
+    const mark = Math.floor(rand() * 4);
+    ctx.fillStyle = sleeve.second;
+    if (mark === 0) {
+      ctx.beginPath();
+      ctx.arc(x + w * (0.56 + rand() * 0.2), y + h * 0.36, w * 0.34, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (mark === 1) {
+      ctx.beginPath();
+      ctx.moveTo(x + w, y);
+      ctx.arc(x + w, y, w * 0.78, Math.PI / 2, Math.PI);
+      ctx.closePath();
+      ctx.fill();
+    } else if (mark === 2) {
+      const bars = 5;
+      const barH = h * 0.052;
+      for (let i = 0; i < bars; i++) ctx.fillRect(x + pad + (w * 0.09) * i, y + h * 0.18 + i * barH * 1.7, w - pad * 2 - (w * 0.09) * i, barH);
     } else {
-      const cx = x + w * (0.3 + rand() * 0.4), cy = y + h * (0.25 + rand() * 0.2);
-      for (let i = 7; i > 0; i--) {
-        ctx.strokeStyle = hsl(tone.h + 160 + i * 9, 0.8, 0.6, 0.08 + i * 0.035);
-        ctx.lineWidth = w * 0.022;
-        ctx.beginPath();
-        ctx.arc(cx, cy, w * 0.09 * i, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      ctx.beginPath();
+      ctx.moveTo(x, y + h * 0.62);
+      ctx.lineTo(x + w, y + h * 0.2);
+      ctx.lineTo(x + w, y + h * 0.5);
+      ctx.lineTo(x, y + h * 0.92);
+      ctx.closePath();
+      ctx.fill();
     }
-    ctx.globalCompositeOperation = 'source-over';
 
-    // Title block, lower third.
-    const shade = ctx.createLinearGradient(0, y + h * 0.42, 0, y + h);
-    shade.addColorStop(0, 'rgba(0,0,0,0)');
-    shade.addColorStop(1, 'rgba(0,0,0,0.72)');
-    ctx.fillStyle = shade;
-    ctx.fillRect(x, y, w, h);
-
-    const pad = w * 0.09;
-    const fit = fitText(ctx, m.title.toUpperCase(), w - pad * 2, h * 0.34, h * 0.105);
-    ctx.fillStyle = '#fff';
+    // Header line: platform on the left, catalogue number on the right.
+    const small = Math.max(7, h * 0.03);
+    ctx.fillStyle = sleeve.ink;
     ctx.textBaseline = 'alphabetic';
+    setType(ctx, 600, small, small * 0.14);
     ctx.textAlign = 'left';
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = h * 0.02;
+    ctx.fillText(m.label.toUpperCase(), x + pad, y + pad + small * 0.8, w * 0.6);
+    ctx.textAlign = 'right';
+    ctx.globalAlpha = 0.75;
+    ctx.fillText(`No. ${catalogue(m.id)}`, x + w - pad, y + pad + small * 0.8);
+    ctx.globalAlpha = 1;
+    ctx.fillRect(x + pad, y + pad + small * 1.35, w - pad * 2, Math.max(1, h * 0.0045));
+
+    // Title, bottom-left, as large as it will go.
+    const fit = fitText(ctx, m.title.toUpperCase(), w - pad * 2, h * 0.42, h * 0.15, 700);
+    ctx.textAlign = 'left';
     let ty = y + h - pad - (fit.lines.length - 1) * fit.lineHeight;
     for (const line of fit.lines) {
       ctx.fillText(line, x + pad, ty);
       ty += fit.lineHeight;
     }
-    ctx.shadowBlur = 0;
-
-    // Platform band across the top.
-    const band = h * 0.062;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(x, y, w, band);
-    ctx.fillStyle = hsl(tone.h + 180, 0.7, 0.72);
-    ctx.fillRect(x, y + band, w, Math.max(1, h * 0.005));
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.font = `700 ${band * 0.5}px ${FONT}`;
-    ctx.textBaseline = 'middle';
-    ctx.fillText(m.label.toUpperCase(), x + pad, y + band / 2, w - pad * 2);
   });
 }
 
-function proceduralSpine(ctx, m, tone, x, y, w, h) {
+function proceduralSpine(ctx, m, sleeve, x, y, w, h) {
   clipRect(ctx, x, y, w, h, () => {
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, hsl(tone.h, Math.min(0.65, tone.s + 0.1), 0.24));
-    g.addColorStop(1, hsl(tone.h + 30, Math.min(0.6, tone.s + 0.1), 0.1));
-    ctx.fillStyle = g;
+    ctx.fillStyle = sleeve.paper;
     ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = sleeve.second;
+    ctx.fillRect(x, y + h * 0.9, w, h * 0.1);
 
     // Western spines read top to bottom.
     ctx.save();
     ctx.translate(x + w / 2, y + h / 2);
     ctx.rotate(Math.PI / 2);
-    const size = Math.max(6, Math.min(w * 0.56, h * 0.05));
+    const size = Math.max(6, Math.min(w * 0.6, h * 0.055));
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = `700 ${size}px ${FONT}`;
-    ctx.fillText(m.title, -h * 0.44, 0, h * 0.66);
+    ctx.fillStyle = sleeve.ink;
+    setType(ctx, 700, size, size * 0.04);
+    ctx.fillText(m.title.toUpperCase(), -h * 0.44, size * 0.06, h * 0.62);
     ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.font = `700 ${size * 0.72}px ${FONT}`;
-    ctx.fillText(m.label.toUpperCase(), h * 0.45, 0, h * 0.2);
+    setType(ctx, 600, size * 0.62, size * 0.08);
+    ctx.fillText(m.label.toUpperCase(), h * 0.385, size * 0.06, h * 0.18);
     ctx.restore();
   });
 }
 
-function proceduralBack(ctx, m, tone, front, x, y, w, h) {
+function proceduralBack(ctx, m, sleeve, front, x, y, w, h) {
   const rand = mulberry32(hashString(m.id) ^ 0x9e3779b9);
   clipRect(ctx, x, y, w, h, () => {
+    let ink = sleeve.ink;
     if (front) {
-      // A blurred, darkened wash of the front cover keeps the two sides related.
-      ctx.filter = `blur(${Math.round(h * 0.045)}px) saturate(1.2)`;
-      drawCover(ctx, front, x - w * 0.1, y - h * 0.1, w * 1.2, h * 1.2);
+      // Real front art but no back scan: a dark wash of the cover keeps them related.
+      ctx.filter = `blur(${Math.round(h * 0.05)}px) saturate(1.1)`;
+      drawCover(ctx, front, x - w * 0.12, y - h * 0.12, w * 1.24, h * 1.24);
       ctx.filter = 'none';
-      ctx.fillStyle = 'rgba(6,8,12,0.66)';
+      ctx.fillStyle = 'rgba(10, 9, 8, 0.74)';
       ctx.fillRect(x, y, w, h);
+      ink = '#efe6d2';
     } else {
-      const g = ctx.createLinearGradient(x, y, x + w, y + h);
-      g.addColorStop(0, hsl(tone.h + 20, 0.45, 0.16));
-      g.addColorStop(1, hsl(tone.h + 70, 0.5, 0.07));
-      ctx.fillStyle = g;
+      ctx.fillStyle = sleeve.paper;
       ctx.fillRect(x, y, w, h);
     }
 
-    const pad = w * 0.09;
-    const fit = fitText(ctx, m.title, w - pad * 2, h * 0.14, h * 0.05, 700);
-    ctx.fillStyle = '#fff';
+    const pad = w * 0.085;
+    const small = Math.max(7, h * 0.03);
+    ctx.fillStyle = ink;
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    let ty = y + pad;
+    ctx.textBaseline = 'alphabetic';
+
+    setType(ctx, 600, small, small * 0.14);
+    ctx.fillText(m.label.toUpperCase(), x + pad, y + pad + small * 0.8, w - pad * 2);
+    ctx.fillRect(x + pad, y + pad + small * 1.35, w - pad * 2, Math.max(1, h * 0.0045));
+
+    const fit = fitText(ctx, m.title.toUpperCase(), w - pad * 2, h * 0.22, h * 0.075, 700);
+    let ty = y + pad + small * 1.35 + h * 0.03 + fit.size * 0.86;
     for (const line of fit.lines) {
       ctx.fillText(line, x + pad, ty);
       ty += fit.lineHeight;
     }
 
-    // Two "screenshot" panels.
-    const panelW = (w - pad * 3) / 2, panelH = panelW * 0.62;
-    ty += h * 0.03;
-    for (let i = 0; i < 2; i++) {
-      const px = x + pad + i * (panelW + pad);
-      const pg = ctx.createLinearGradient(px, ty, px + panelW, ty + panelH);
-      pg.addColorStop(0, hsl(tone.h + 140 + rand() * 80, 0.6, 0.42));
-      pg.addColorStop(1, hsl(tone.h + rand() * 60, 0.6, 0.16));
-      ctx.fillStyle = pg;
-      ctx.fillRect(px, ty, panelW, panelH);
-      ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-      ctx.lineWidth = Math.max(1, h * 0.003);
-      ctx.strokeRect(px, ty, panelW, panelH);
-    }
-    ty += panelH + h * 0.045;
+    // Catalogue number bottom-left, barcode bottom-right.
+    setType(ctx, 600, small, small * 0.14);
+    ctx.globalAlpha = 0.8;
+    ctx.fillText(`No. ${catalogue(m.id)}`, x + pad, y + h - pad);
+    ctx.globalAlpha = 1;
 
-    // Blurb, drawn as text-weight bars: reads as copy at shelf distance.
-    ctx.fillStyle = 'rgba(255,255,255,0.34)';
-    const barH = Math.max(1, h * 0.009);
-    for (let i = 0; i < 9 && ty < y + h * 0.78; i++) {
-      ctx.fillRect(x + pad, ty, (w - pad * 2) * (i % 4 === 3 ? 0.45 + rand() * 0.3 : 0.9 + rand() * 0.1), barH);
-      ty += barH * 2.5 + (i % 4 === 3 ? barH * 2 : 0);
-    }
-
-    // Barcode.
-    const bw = w * 0.3, bh = h * 0.085;
+    const bw = w * 0.3, bh = h * 0.08;
     const bx = x + w - pad - bw, by = y + h - pad - bh;
-    ctx.fillStyle = '#f4f4f4';
+    ctx.fillStyle = '#f3efe6';
     ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = '#111';
+    ctx.fillStyle = '#14110e';
     for (let cx = bx + bw * 0.06; cx < bx + bw * 0.94;) {
       const lw = bw * (0.008 + rand() * 0.022);
-      ctx.fillRect(cx, by + bh * 0.1, lw, bh * 0.8);
+      ctx.fillRect(cx, by + bh * 0.12, lw, bh * 0.76);
       cx += lw + bw * (0.008 + rand() * 0.02);
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.font = `700 ${h * 0.026}px ${FONT}`;
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(m.label.toUpperCase(), x + pad, y + h - pad, w * 0.5);
   });
 }
 
@@ -334,7 +322,12 @@ async function stitch(m) {
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
 
-  const tone = front ? averageHsl(front) : { h: hashString(m.id) % 360, s: 0.6, l: 0.3 };
+  const sleeve = SLEEVES[hashString(`${m.id}:sleeve`) % SLEEVES.length];
+  const tone = front ? averageHsl(front) : null;
+  // A missing spine beside real cover art takes its colour from that art.
+  const spineSleeve = tone
+    ? { paper: hsl(tone.h, Math.min(0.5, tone.s), 0.16), second: hsl(tone.h, Math.min(0.5, tone.s), 0.1), ink: '#efe6d2' }
+    : sleeve;
 
   // Case plastic shows through wherever the sleeve does not cover.
   ctx.fillStyle = p.caseColor;
@@ -346,10 +339,10 @@ async function stitch(m) {
   const fy = inset, fh = H - inset * 2;
 
   if (front) drawCover(ctx, front, fx, fy, fw, fh);
-  else proceduralFront(ctx, m, tone, fx, fy, fw, fh);
+  else proceduralFront(ctx, m, sleeve, fx, fy, fw, fh);
 
   if (back) drawCover(ctx, back, bx, fy, bw, fh);
-  else proceduralBack(ctx, m, tone, front, bx, fy, bw, fh);
+  else proceduralBack(ctx, m, sleeve, front, bx, fy, bw, fh);
 
   if (spine) {
     if (spine.width > spine.height) {
@@ -363,16 +356,17 @@ async function stitch(m) {
       drawCover(ctx, spine, cSpine.x, fy, cSpine.w, fh);
     }
   } else {
-    proceduralSpine(ctx, m, tone, cSpine.x, fy, cSpine.w, fh);
+    proceduralSpine(ctx, m, spineSleeve, cSpine.x, fy, cSpine.w, fh);
   }
 
   // Edge swatch: bare card for cardboard boxes, plastic otherwise.
-  ctx.fillStyle = p.style === 'cardboard' && p.id !== 'pc-steelbook' ? hsl(tone.h, Math.min(tone.s, 0.4), 0.12) : p.caseColor;
+  const card = tone ? hsl(tone.h, Math.min(tone.s, 0.4), 0.12) : sleeve.second;
+  ctx.fillStyle = p.style === 'cardboard' && p.id !== 'pc-steelbook' ? card : p.caseColor;
   ctx.fillRect(cEdge.x - 1, 0, cEdge.w + 2, H);
 
-  faceShading(ctx, cFront.x, 0, cFront.w, H, 0.28);
-  faceShading(ctx, cBack.x, 0, cBack.w, H, 0.28);
-  faceShading(ctx, cSpine.x, 0, cSpine.w, H, 0.35);
+  faceShading(ctx, cFront.x, 0, cFront.w, H, 0.16);
+  faceShading(ctx, cBack.x, 0, cBack.w, H, 0.16);
+  faceShading(ctx, cSpine.x, 0, cSpine.w, H, 0.24);
 
   for (const b of [front, back, spine]) if (b) b.close();
 

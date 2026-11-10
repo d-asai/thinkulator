@@ -2,6 +2,7 @@ import * as THREE from './three.js';
 import { profileFor } from './BoxFactory.js';
 import { SmoothValue, clamp } from '../util/motion.js';
 import { letterOf } from '../library/shelves.js';
+import { makeWoodTexture, drawShelfLabel, LABEL_SIZE } from './ShelfDressing.js';
 
 export const SHELF_SPACING = 2.95; //  vertical distance between shelves
 const BOX_GAP = 0.2; //                 air between neighbouring boxes
@@ -49,21 +50,44 @@ export class ShelfView {
     this._buildPlanks();
   }
 
+  /**
+   * Each shelf is a walnut board with a darker rail along its front edge. A
+   * printed card in the rail names the shelf, the way a shop or library
+   * shelf is labelled. Five sets are pooled and re-used as the camera moves.
+   */
   _buildPlanks() {
+    const renderer = this.stage.renderer;
+    this.woodTexture = makeWoodTexture(renderer);
     this.plankGeometry = new THREE.BoxGeometry(60, 0.1, 1.9);
-    this.ledGeometry = new THREE.BoxGeometry(60, 0.022, 0.03);
-    // A little emissive keeps the underside of the shelf above from reading as a pure black bar.
-    this.plankMaterial = new THREE.MeshStandardMaterial({ color: 0x2a1f18, roughness: 0.55, metalness: 0.05, emissive: 0x17130f });
+    this.railGeometry = new THREE.BoxGeometry(60, 0.3, 0.06);
+    const labelHeight = 0.2;
+    this.labelGeometry = new THREE.PlaneGeometry(labelHeight * (LABEL_SIZE.width / LABEL_SIZE.height), labelHeight);
+    // A trace of emissive keeps the underside of the shelf above from going pure black.
+    this.plankMaterial = new THREE.MeshStandardMaterial({ map: this.woodTexture, color: 0xb9a48f, roughness: 0.62, metalness: 0, emissive: 0x0f0a07 });
+    this.railMaterial = new THREE.MeshStandardMaterial({ map: this.woodTexture, color: 0x57483c, roughness: 0.5, metalness: 0, emissive: 0x0a0705 });
+
     this.planks = [];
     for (let i = 0; i < PLANKS; i++) {
       const plank = new THREE.Mesh(this.plankGeometry, this.plankMaterial);
       plank.receiveShadow = true;
-      const led = new THREE.Mesh(this.ledGeometry, new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, fog: false }));
-      led.position.set(0, -0.02, 0.96);
-      plank.add(led);
+
+      const rail = new THREE.Mesh(this.railGeometry, this.railMaterial);
+      rail.position.set(0, -0.1, 0.98);
+      plank.add(rail);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = LABEL_SIZE.width;
+      canvas.height = LABEL_SIZE.height;
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      const label = new THREE.Mesh(this.labelGeometry, new THREE.MeshBasicMaterial({ map: texture }));
+      label.position.set(0, -0.1, 1.012);
+      plank.add(label);
+
       plank.visible = false;
       this.root.add(plank);
-      this.planks.push({ plank, led, color: new THREE.Color() });
+      this.planks.push({ plank, label, canvas, texture, key: '', shade: -1 });
     }
   }
 
@@ -97,7 +121,6 @@ export class ShelfView {
         spacing: maxW + BOX_GAP,
         scroll: new SmoothValue(cursor, 0.115),
         focus: new SmoothValue(0, 0.13),
-        accent: new THREE.Color(def.accent),
       });
     }
 
@@ -432,8 +455,19 @@ export class ShelfView {
       const p = this.planks[((s % PLANKS) + PLANKS) % PLANKS];
       p.plank.visible = true;
       p.plank.position.set(0, this._shelfY(s) - 0.05, 0.15);
-      const glow = (0.12 + 0.88 * shelf.focus.value) * (1 - 0.8 * this.dim.value);
-      p.led.material.color.copy(shelf.accent).multiplyScalar(glow * 1.6);
+
+      // Reprint the card only when this board is handed to a different shelf.
+      const key = `${shelf.system.id}|${shelf.games.length}|${shelf.system.name}`;
+      if (key !== p.key) {
+        p.key = key;
+        drawShelfLabel(p.canvas, shelf.system);
+        p.texture.needsUpdate = true;
+      }
+      const shade = (0.3 + 0.7 * shelf.focus.value) * (1 - 0.8 * this.dim.value);
+      if (Math.abs(shade - p.shade) > 0.004) {
+        p.shade = shade;
+        p.label.material.color.setScalar(shade);
+      }
     }
   }
 
@@ -451,10 +485,13 @@ export class ShelfView {
       box.material.dispose();
       box.mesh.userData.box = null;
     }
-    for (const p of this.planks) p.led.material.dispose();
+    for (const p of this.planks) { p.label.material.dispose(); p.texture.dispose(); }
     this.plankGeometry.dispose();
-    this.ledGeometry.dispose();
+    this.railGeometry.dispose();
+    this.labelGeometry.dispose();
     this.plankMaterial.dispose();
+    this.railMaterial.dispose();
+    this.woodTexture.dispose();
     this.stage.scene.remove(this.root);
     this.all.length = 0;
     this.free.length = 0;

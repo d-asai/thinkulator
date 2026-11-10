@@ -1,6 +1,7 @@
 import * as THREE from './three.js';
+import { makePlasterTexture } from './ShelfDressing.js';
 
-const BACKGROUND = 0x06070a;
+const BACKGROUND = 0x0c0b0a;
 export const FOV = 32;
 const BASE_DISTANCE = 8.8;
 
@@ -14,7 +15,7 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.08;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -71,12 +72,16 @@ export class SceneManager {
     for (const m of mats) m.dispose();
   }
 
+  /**
+   * Lit like a display case: one warm key light from the upper right that
+   * casts the shadows, a soft pool on the wall behind the active shelf, and
+   * just enough cool fill that the shadow sides of boxes keep their colour.
+   */
   _buildLights() {
-    this.hemi = new THREE.HemisphereLight(0xc4d6ff, 0x4a4038, 0.95);
+    this.hemi = new THREE.HemisphereLight(0xe6ebff, 0x33271d, 0.55);
     this.scene.add(this.hemi);
 
-    // Key light: warm, high and to the right, the only shadow caster.
-    this.key = new THREE.DirectionalLight(0xfff0dc, 2.6);
+    this.key = new THREE.DirectionalLight(0xffe7c8, 2.5);
     this.key.castShadow = true;
     this.key.shadow.mapSize.set(2048, 2048);
     const sc = this.key.shadow.camera;
@@ -86,19 +91,20 @@ export class SceneManager {
     this.key.shadow.radius = 5;
     this.scene.add(this.key, this.key.target);
 
-    // Cool rim from the opposite side separates box edges from the wall.
-    this.rim = new THREE.DirectionalLight(0x88aaff, 0.7);
+    this.rim = new THREE.DirectionalLight(0xa9bcff, 0.4);
     this.scene.add(this.rim, this.rim.target);
 
-    // Showcase spot on the centre slot.
-    this.spot = new THREE.SpotLight(0xffffff, 2.2, 0, 0.3, 0.75, 0);
+    // Wide and soft-edged: it reads as a wash of light on the wall, which
+    // frames the active shelf the way a vignette would, but in the room.
+    this.spot = new THREE.SpotLight(0xfff1de, 2.3, 0, 0.5, 1, 0);
     this.scene.add(this.spot, this.spot.target);
   }
 
   _buildRoom() {
+    this.wallTexture = makePlasterTexture(this.renderer);
     this.wall = new THREE.Mesh(
       new THREE.PlaneGeometry(90, 44),
-      new THREE.MeshStandardMaterial({ color: 0x1b202a, roughness: 0.94, metalness: 0 }),
+      new THREE.MeshStandardMaterial({ map: this.wallTexture, roughness: 1, metalness: 0 }),
     );
     this.wall.position.z = -0.95;
     this.wall.receiveShadow = false; // box shadows belong on the shelf; on the wall they read as noise
@@ -116,8 +122,8 @@ export class SceneManager {
     this.key.target.position.set(0, y + 0.8, 0);
     this.rim.position.set(-9, y + 4, -3);
     this.rim.target.position.set(0, y + 1, 0);
-    this.spot.position.set(0, y + 6.5, 7);
-    this.spot.target.position.set(0, y + 1, 0.6);
+    this.spot.position.set(0, y + 4.5, 10);
+    this.spot.target.position.set(0, y + 1.1, -0.9);
     this.wall.position.y = y;
   }
 
@@ -147,6 +153,7 @@ export class SceneManager {
     this.canvas.removeEventListener('webglcontextrestored', this._onRestored);
     this.wall.geometry.dispose();
     this.wall.material.dispose();
+    this.wallTexture.dispose();
     this.environment.dispose();
     this.key.shadow.dispose();
     this.renderer.dispose();

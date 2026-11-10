@@ -25,6 +25,7 @@ const MOUSE_HINTS = {
 };
 // Typing replaces the on-screen keyboard, so the keyboard needs different entry hints.
 const KEYBOARD_ENTRY = [['Type', 'Enter text'], ['↑ ↓', 'Result'], ['Enter', 'Done'], ['Esc', 'Cancel']];
+const RAIL_CENTRE = 4; // the index shows nine rows; the active one sits on the fifth
 const KEYBOARD_ZOOM = { browse: '[ ]', inspect: '− / =' };
 
 const el = (tag, className, text) => {
@@ -88,13 +89,15 @@ export class Hud {
   }
 
   setShelves(shelves) {
-    this.rail.replaceChildren();
+    // The index is a wheel: the list slides so the active shelf stays on the
+    // centre line, and the rows above and below fade out through a mask.
+    this.railTrack = el('div', 'rail-track');
+    this.rail.replaceChildren(this.railTrack);
     this.rail.hidden = shelves.length < 2; // nothing to switch between
     this.railItems = shelves.map((shelf) => {
       const item = el('div', 'rail-item');
-      item.style.setProperty('--item-accent', shelf.system.accent);
       item.append(el('span', '', shelf.system.short), el('span', 'rail-count', String(shelf.games.length)));
-      this.rail.append(item);
+      this.railTrack.append(item);
       return item;
     });
     this.lastKey = '';
@@ -119,11 +122,8 @@ export class Hud {
     if (key === this.lastKey) return;
     this.lastKey = key;
 
-    this.railItems.forEach((item, i) => {
-      item.classList.toggle('active', i === shelfIndex);
-      // Keep the active system in view when there are more shelves than fit.
-      if (i === shelfIndex) this.rail.scrollTop = Math.max(0, item.offsetTop - this.rail.clientHeight / 2);
-    });
+    this.railItems.forEach((item, i) => item.classList.toggle('active', i === shelfIndex));
+    if (this.railTrack) this.railTrack.style.transform = `translateY(calc(var(--row) * ${RAIL_CENTRE - shelfIndex}))`;
     if (!game) {
       this.system.textContent = '';
       this.title.textContent = '';
@@ -132,8 +132,9 @@ export class Hud {
     }
     document.documentElement.style.setProperty('--accent', shelf.system.accent);
     this.system.textContent = shelf.system.name;
-    this.title.textContent = `${game.user.favorite ? '★ ' : ''}${game.title}`;
+    this.title.textContent = game.title;
     const parts = [`${shelf.cursor + 1} / ${shelf.games.length}`];
+    if (game.user.favorite) parts.push('★ Favourite');
     if (shelf.system.kind !== 'system') parts.push(game.system.short);
     if (game.region) parts.push(game.region);
     if (game.launcher) parts.push(LAUNCHERS[game.launcher] || game.launcher);
