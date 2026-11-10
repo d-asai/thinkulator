@@ -1,6 +1,6 @@
 {
   "name": "megashelf",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "Unified 3D emulation and PC game frontend",
   "author": "d-asai",
   "main": "src/main/main.js",
