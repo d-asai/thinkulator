@@ -11,6 +11,7 @@
     "dev": "electron . --windowed",
     "demo": "electron . --windowed --demo",
     "test": "node --test",
+    "icons": "electron scripts/make-icons.js",
     "dist": "electron-builder --win --x64"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "files": [
       "src/**/*",
       "package.json",
+      "build/icon.png",
       "!node_modules/three/examples",
       "!node_modules/three/src",
       "!node_modules/three/build/*.min.js",
@@ -34,7 +36,8 @@
       "!node_modules/three/build/three.tsl*"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

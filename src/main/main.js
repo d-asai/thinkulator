@@ -224,6 +224,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     title: 'MegaShelf',
+    icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
